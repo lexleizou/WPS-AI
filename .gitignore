@@ -52,3 +52,6 @@ upload-oss/oss.config.js
 docs/bug-report.md
 
 fixes/**/*-backups/
+fixes/**/backups/
+fixes/**/__pycache__/
+*.local.json
