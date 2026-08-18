@@ -1095,10 +1095,16 @@
     const modelId = String(select.value || rendered.split("·").pop() || "").trim();
     if (!modelId) return;
     const full = rendered.includes("·") ? rendered : (label.title || rendered || modelId);
+    // 已迁移到本机 Codex CLI 官方直连后，旧业务层仍会给选择器写入
+    // “Codex (ChatGPT OAuth) · …”。在窄 TaskPane 中它既被截断，又传达了过时的路由。
+    // 仅压缩这个视觉标签；真实 modelId 仍来自隐藏 select，完整身份保留在 title。
+    if (/^Codex\s*\(ChatGPT OAuth\)(?:\s*·\s*.*)?$/i.test(full)) {
+      const concise = "Codex（官方直连）";
+      if (label.textContent !== concise) label.textContent = concise;
+    }
     label.title = full;
     if (button) button.title = `当前模型：${modelId}（点击选择）`;
-    // 业务层会持续渲染完整模型名；不得回写 textContent，否则两端互相覆盖造成模型区闪烁。
-    // 视觉截断交由 CSS 的 ellipsis 处理，仅更新不受观察器监听的 title。
+    // 其他业务层模型名持续由原页面渲染；不得回写，避免两端互相覆盖造成闪烁。
   }
 
   function formatTokens(value) {
