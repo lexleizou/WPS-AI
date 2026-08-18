@@ -18,6 +18,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const crypto = require("crypto");
+const { spawn, spawnSync } = require("child_process");
 const { URL, pathToFileURL } = require("url");
 
 // 修 B9：全局兜底。任何路径漏掉的未捕获异常/未处理 rejection 都不该让整个代理进程退出
@@ -850,6 +851,13 @@ function resolveTarget(pathname, search) {
   for (const route of ROUTE_MAP) {
     if (pathname.startsWith(route.prefix)) {
       const suffix = pathname.slice(route.prefix.length);
+      // 永远与当前官方 Codex CLI client_version 对齐。旧灵犀固定 0.0.1 会让
+      // 官方目录合法返回空 models；这里不信任也不透传 WebView 的版本参数。
+      if (route.prefix === "/codex/") {
+        const params = new URLSearchParams(search || "");
+        params.set("client_version", getCodexCliClientVersion());
+        return `${route.target}${suffix}?${params.toString()}`;
+      }
       return route.target + suffix + (search || "");
     }
   }
@@ -983,7 +991,7 @@ function isCloudflareIp(ip) {
   return false;
 }
 
-function proxyRequest(targetUrl, method, headers, body, clientRes, extraOptions = {}) {
+function proxyRequest(targetUrl, method, headers, body, clientRes, extraOptions = {}, attempt = 0) {
   const url = new URL(targetUrl);
 
   // Content-Length 必须自己算并写回：browser 的 Content-Length 被 PASSTHROUGH 过滤了，
@@ -1097,28 +1105,40 @@ function proxyRequest(targetUrl, method, headers, body, clientRes, extraOptions 
 
   // socket 生命周期诊断：让 ECONNRESET 时能看清 DNS 解到哪、TCP 是否真连上、TLS 是否真握上
   proxyReq.on("socket", (sock) => {
-    sock.on("lookup", (err, address, family, host) => {
+    // Node 26 的 global agent 会复用 TLS socket。复用连接已触发过 lookup/connect/secureConnect，
+    // 对它重复 .on() 会累积监听器并最终触发 MaxListenersExceededWarning。
+    if (!sock.connecting) {
+      tcpConnected = true; tlsHandshakeDone = url.protocol === "https:";
+      remoteAddress = sock.remoteAddress || null;
+      return;
+    }
+    sock.once("lookup", (err, address, family, host) => {
       if (err) console.warn(`[proxy] DNS ${host} 解析失败:`, err.message);
-      else {
-        console.log(`[proxy] DNS ${host} → ${address} (IPv${family})`);
-        remoteAddress = address;
-      }
+      else { console.log(`[proxy] DNS ${host} → ${address} (IPv${family})`); remoteAddress = address; }
     });
-    sock.on("connect", () => {
+    sock.once("connect", () => {
       tcpConnected = true;
       if (sock.remoteAddress) remoteAddress = sock.remoteAddress;
       console.log(`[proxy] TCP 连上 ${sock.remoteAddress}:${sock.remotePort}`);
     });
-    sock.on("secureConnect", () => {
+    sock.once("secureConnect", () => {
       tlsHandshakeDone = true;
       console.log(`[proxy] TLS 握手成功 ${sock.remoteAddress}:${sock.remotePort} ALPN=${sock.alpnProtocol || "(none)"} cipher=${(sock.getCipher?.() || {}).name || "?"}`);
     });
   });
 
   proxyReq.on("error", (err) => {
+    const code = err.code || "";
+    const isCodexUpstream = url.hostname === "chatgpt.com" && url.pathname.startsWith("/backend-api/codex/");
+    // 仅在从未收到上游响应、且明确是瞬断时重试；不会重放已开始的 SSE 或工具输出。
+    if (isCodexUpstream && !clientRes.headersSent && attempt < 2 && (code === "ECONNRESET" || /socket hang up/i.test(err.message || ""))) {
+      const delay = 250 * (attempt + 1);
+      console.warn(`[proxy] Codex 上游瞬断，${delay}ms 后以新连接重试（${attempt + 1}/2）`);
+      setTimeout(() => proxyRequest(targetUrl, method, headers, body, clientRes, { ...extraOptions, agent: false }, attempt + 1), delay);
+      return;
+    }
     console.error(`[proxy] 转发请求失败: ${targetUrl}`, err.message);
     // 网络层常见错误码翻译成可读提示。带上 host 让用户能快速定位 Base URL 是否写错。
-    const code = err.code || "";
     const hostHint = `${url.protocol}//${url.hostname}${url.port ? ":" + url.port : ""}`;
     let friendly = err.message;
     if (timedOut || /timeout/i.test(err.message)) {
@@ -1497,6 +1517,180 @@ async function extractPdfText(filePath) {
   return result;
 }
 
+// ===== LiteLLM 模型目录（仅供本机灵犀 UI 管理） =====
+// 注意：这里的“禁用”只是灵犀前端模型选择器的可见性偏好，绝不改 LiteLLM 路由、
+// 模型部署或其它客户端（如 Sally / Proma）的可用模型。管理 key 永远不返回给 WebView。
+const LITELLM_BASE_URL = "http://127.0.0.1:4000";
+const LITELLM_VISIBILITY_FILE = path.join(LINGXI_HOME, "litellm-model-visibility.json");
+const LITELLM_MAX_MODELS = 1000;
+
+function getLiteLlmApiKey() {
+  // 可由受控服务环境显式提供；生产默认从 macOS Keychain 读取，密钥只在本函数调用链内存活。
+  const envKey = String(process.env.LINGXI_LITELLM_API_KEY || "").trim();
+  if (envKey) return envKey;
+  if (process.platform !== "darwin") throw new Error("LiteLLM 凭据不可用");
+  const result = spawnSync("security", ["find-generic-password", "-s", "com.proma.litellm", "-a", "proma", "-w"], {
+    encoding: "utf8", timeout: 3000, windowsHide: true
+  });
+  const key = String(result.stdout || "").trim();
+  if (!key || result.status !== 0) throw new Error("LiteLLM 凭据不可用");
+  return key;
+}
+
+function requestLiteLlmJson(route) {
+  return new Promise((resolve, reject) => {
+    let token;
+    try { token = getLiteLlmApiKey(); } catch (error) { reject(error); return; }
+    const request = http.request(`${LITELLM_BASE_URL}${route}`, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+      timeout: 5000
+    }, (response) => {
+      const chunks = [];
+      let bytes = 0;
+      response.on("data", (chunk) => {
+        bytes += chunk.length;
+        if (bytes <= 2 * 1024 * 1024) chunks.push(chunk);
+      });
+      response.on("end", () => {
+        if (bytes > 2 * 1024 * 1024) { reject(new Error("LiteLLM 响应过大")); return; }
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+          reject(new Error(`LiteLLM 返回 HTTP ${response.statusCode}`)); return;
+        }
+        try { resolve(JSON.parse(Buffer.concat(chunks).toString("utf8"))); }
+        catch (error) { reject(new Error("LiteLLM 返回了无效数据")); }
+      });
+    });
+    request.on("timeout", () => request.destroy(new Error("LiteLLM 请求超时")));
+    request.on("error", () => reject(new Error("LiteLLM 不可用")));
+    request.end();
+  });
+}
+
+// ===== Codex CLI official OAuth bridge =====
+// 灵犀 WebView 永不读取或保存 OAuth token；本机 Codex CLI 是唯一的凭据 owner。
+const CODEX_CLI_AUTH_FILE = path.join(os.homedir(), ".codex", "auth.json");
+const CODEX_CLI_BIN = process.env.CODEX_CLI_BIN || "/opt/homebrew/bin/codex";
+let codexCliClientVersion = null;
+function getCodexCliClientVersion() {
+  if (codexCliClientVersion) return codexCliClientVersion;
+  try {
+    const output = String(spawnSync(CODEX_CLI_BIN, ["--version"], { encoding: "utf8", timeout: 3000, env: { ...process.env, PATH: `/opt/homebrew/bin:/usr/local/bin:${process.env.PATH || "/usr/bin:/bin"}` } }).stdout || "");
+    const match = output.match(/(\d+\.\d+\.\d+)/);
+    if (match) codexCliClientVersion = match[1];
+  } catch (_) {}
+  return codexCliClientVersion || "0.147.0";
+}
+let codexDeviceLoginJob = null;
+
+function localCommandEnv() {
+  return { ...process.env, PATH: `/opt/homebrew/bin:/usr/local/bin:${process.env.PATH || "/usr/bin:/bin"}` };
+}
+
+function runLocalCommand(command, args, timeoutMs = 8000) {
+  return new Promise((resolve) => {
+    let child;
+    try { child = spawn(command, args, { cwd: os.homedir(), env: localCommandEnv(), stdio: ["ignore", "pipe", "pipe"] }); }
+    catch (error) { resolve({ ok: false, output: "", error: error?.message || "无法启动本地命令" }); return; }
+    let output = "";
+    const append = (chunk) => { output = `${output}${String(chunk || "")}`.slice(-8000); };
+    child.stdout?.on("data", append);
+    child.stderr?.on("data", append);
+    const timer = setTimeout(() => { try { child.kill("SIGTERM"); } catch (_) {} }, timeoutMs);
+    child.on("error", (error) => { clearTimeout(timer); resolve({ ok: false, output, error: error?.message || "本地命令执行失败" }); });
+    child.on("close", (code) => { clearTimeout(timer); resolve({ ok: code === 0, output, code }); });
+  });
+}
+
+function decodeJwtExpiry(token) {
+  try {
+    const middle = String(token || "").split(".")[1];
+    if (!middle) return null;
+    const decoded = Buffer.from(middle.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
+    const exp = Number(JSON.parse(decoded)?.exp);
+    return Number.isFinite(exp) && exp > Math.floor(Date.now() / 1000) ? exp : null;
+  } catch (_) { return null; }
+}
+
+function readCodexCliDirectAuth() {
+  const parsed = JSON.parse(fs.readFileSync(CODEX_CLI_AUTH_FILE, "utf8"));
+  const tokens = parsed?.tokens;
+  const access_token = typeof tokens?.access_token === "string" ? tokens.access_token.trim() : "";
+  const refresh_token = typeof tokens?.refresh_token === "string" ? tokens.refresh_token.trim() : "";
+  const id_token = typeof tokens?.id_token === "string" ? tokens.id_token.trim() : "";
+  const account_id = typeof tokens?.account_id === "string" ? tokens.account_id.trim() : "";
+  if (!access_token || !refresh_token || !id_token || !account_id) throw new Error("本机 Codex 登录态不完整，请先使用 Codex CLI 登录");
+  const expires_at = decodeJwtExpiry(access_token);
+  if (!expires_at) throw new Error("本机 Codex 登录态已过期，请先重新登录");
+  return { access_token, refresh_token, id_token, account_id, expires_at };
+}
+
+function publicCodexLoginJob() {
+  if (!codexDeviceLoginJob) return null;
+  const { state, output, startedAt, finishedAt } = codexDeviceLoginJob;
+  return { state, output: String(output || "").slice(-6000), startedAt, finishedAt: finishedAt || null };
+}
+
+function startCodexDeviceLogin() {
+  if (codexDeviceLoginJob?.state === "running") return publicCodexLoginJob();
+  const job = { state: "running", output: "", startedAt: new Date().toISOString(), finishedAt: null };
+  codexDeviceLoginJob = job;
+  let child;
+  try { child = spawn(CODEX_CLI_BIN, ["login", "--device-auth"], { cwd: os.homedir(), env: localCommandEnv(), stdio: ["ignore", "pipe", "pipe"] }); }
+  catch (error) { job.state = "error"; job.output = error?.message || "无法启动 Codex CLI"; job.finishedAt = new Date().toISOString(); return publicCodexLoginJob(); }
+  const append = (chunk) => { job.output = `${job.output}${String(chunk || "")}`.slice(-6000); };
+  child.stdout?.on("data", append);
+  child.stderr?.on("data", append);
+  child.on("error", (error) => { job.state = "error"; job.output = `${job.output}${error?.message || "Codex CLI 登录失败"}`.slice(-6000); job.finishedAt = new Date().toISOString(); });
+  child.on("close", (code) => { job.state = code === 0 ? "complete" : "error"; job.finishedAt = new Date().toISOString(); });
+  return publicCodexLoginJob();
+}
+
+async function getCodexOAuthPublicStatus() {
+  const cli = await runLocalCommand(CODEX_CLI_BIN, ["login", "status"], 5000);
+  const cliAuthenticated = cli.ok && /logged in/i.test(cli.output);
+  return {
+    ok: cliAuthenticated,
+    cliAuthenticated,
+    clientVersion: getCodexCliClientVersion(),
+    loginJob: publicCodexLoginJob(),
+  };
+}
+
+function loadLiteLlmVisibility() {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(LITELLM_VISIBILITY_FILE, "utf8"));
+    const values = Array.isArray(parsed?.disabledModelIds) ? parsed.disabledModelIds : [];
+    return new Set(values.filter((id) => typeof id === "string" && id.length > 0 && id.length <= 256));
+  } catch (error) { return new Set(); }
+}
+
+function saveLiteLlmVisibility(values) {
+  const disabledModelIds = Array.from(values).sort();
+  const tmp = `${LITELLM_VISIBILITY_FILE}.${process.pid}.tmp`;
+  fs.mkdirSync(path.dirname(LITELLM_VISIBILITY_FILE), { recursive: true });
+  fs.writeFileSync(tmp, JSON.stringify({ version: 1, disabledModelIds, updatedAt: new Date().toISOString() }, null, 2), { encoding: "utf8", mode: 0o600 });
+  fs.renameSync(tmp, LITELLM_VISIBILITY_FILE);
+}
+
+function normalizeLiteLlmModels(payload, disabled) {
+  const rows = Array.isArray(payload?.data) ? payload.data : [];
+  const seen = new Set();
+  return rows.map((row) => {
+    const id = String(row?.id || "").trim();
+    if (!id || id.length > 256 || seen.has(id)) return null;
+    seen.add(id);
+    return {
+      id,
+      provider: String(row?.owned_by || row?.provider || "LiteLLM"),
+      mode: String(row?.mode || "chat"),
+      maxInputTokens: Number.isFinite(Number(row?.max_input_tokens)) ? Number(row.max_input_tokens) : null,
+      maxOutputTokens: Number.isFinite(Number(row?.max_output_tokens)) ? Number(row.max_output_tokens) : null,
+      enabledInLingxi: !disabled.has(id)
+    };
+  }).filter(Boolean).sort((a, b) => a.id.localeCompare(b.id));
+}
+
 const server = http.createServer(async (req, res) => {
   const { method, url: reqUrl } = req;
   const parsedUrl = new URL(reqUrl, `http://localhost:${PROXY_PORT}`);
@@ -1523,6 +1717,53 @@ const server = http.createServer(async (req, res) => {
       pid: process.pid,
       features: PROXY_FEATURES
     });
+    return;
+  }
+
+  // GET /service/litellm/models —— 代理读取详细模型目录；不会向 WebView 暴露 LiteLLM key。
+  if (pathname === "/service/litellm/models" && method === "GET") {
+    try {
+      const disabled = loadLiteLlmVisibility();
+      const payload = await requestLiteLlmJson("/v1/models");
+      const models = normalizeLiteLlmModels(payload, disabled);
+      sendJson(res, 200, { ok: true, models, disabledModelIds: Array.from(disabled).sort(), fetchedAt: new Date().toISOString() });
+    } catch (error) {
+      sendJson(res, 502, { ok: false, error: error?.message || "无法读取 LiteLLM 模型清单" });
+    }
+    return;
+  }
+
+  // PUT /service/litellm/model-visibility —— 保存灵犀本地模型可见性；不触碰 LiteLLM 全局配置。
+  if (pathname === "/service/litellm/model-visibility" && method === "PUT") {
+    try {
+      const body = await readBody(req);
+      const payload = JSON.parse(body.toString("utf8") || "{}");
+      const input = Array.isArray(payload?.disabledModelIds) ? payload.disabledModelIds : null;
+      if (!input || input.length > LITELLM_MAX_MODELS) throw new Error("模型可见性数据无效");
+      const disabled = new Set();
+      input.forEach((raw) => {
+        const id = String(raw || "").trim();
+        if (!id || id.length > 256 || /[\u0000-\u001f]/.test(id)) throw new Error("模型 ID 无效");
+        disabled.add(id);
+      });
+      saveLiteLlmVisibility(disabled);
+      sendJson(res, 200, { ok: true, disabledModelIds: Array.from(disabled).sort() });
+    } catch (error) {
+      sendJson(res, 400, { ok: false, error: error?.message || "无法保存模型可见性" });
+    }
+    return;
+  }
+
+  // GET /service/codex-oauth/status —— 仅返回脱敏状态；OAuth token 永不离开 host。
+  if (pathname === "/service/codex-oauth/status" && method === "GET") {
+    try { sendJson(res, 200, await getCodexOAuthPublicStatus()); }
+    catch (error) { sendJson(res, 502, { ok: false, error: error?.message || "无法读取 Codex OAuth 状态" }); }
+    return;
+  }
+
+  // POST /service/codex-oauth/login —— 仅由用户点击后启动官方 Codex CLI device auth。
+  if (pathname === "/service/codex-oauth/login" && method === "POST") {
+    sendJson(res, 202, { ok: true, loginJob: startCodexDeviceLogin() });
     return;
   }
 
@@ -3218,6 +3459,24 @@ const server = http.createServer(async (req, res) => {
   console.log(`[proxy] ${method} ${pathname}${search || ""} → ${targetUrl}`);
 
   const headers = filterHeaders(req.headers);
+  if (pathname.startsWith("/codex/")) {
+    // 灵犀前端只发送内容头；OAuth token 与 account id 仅从本机 Codex CLI 受控文件读取。
+    try {
+      const auth = readCodexCliDirectAuth();
+      for (const key of Object.keys(headers)) {
+        if (["authorization", "chatgpt-account-id", "originator", "openai-beta", "user-agent"].includes(key.toLowerCase())) delete headers[key];
+      }
+      headers.Authorization = `Bearer ${auth.access_token}`;
+      headers["chatgpt-account-id"] = auth.account_id;
+      headers.originator = "codex_cli_rs";
+      headers["OpenAI-Beta"] = "responses=experimental";
+      headers["User-Agent"] = `codex-cli/${getCodexCliClientVersion()}`;
+      auth.access_token = auth.refresh_token = auth.id_token = "";
+    } catch (error) {
+      sendJson(res, 401, { error: { message: error?.message || "本机 Codex CLI 未登录" } });
+      return;
+    }
+  }
   // NOTE: 设置正确的 Host 头，避免远程服务器拒绝请求
   const remoteUrl = new URL(targetUrl);
   headers["Host"] = remoteUrl.host;
