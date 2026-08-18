@@ -48,6 +48,7 @@ check("exact model label sync", "syncModelLabel" in js and "select.value" in js 
 check("context usage tooltip", "installContextUsage" in js and "lingxiContextTooltip" in js and ".lingxi-context-tooltip" in css and "position: fixed" in css and "--lg-context-pct" in css and "128K" in js and "ring.removeAttribute(\"title\")" in js)
 check("dark popup surfaces", ".thinking-menu" in css and ".chat-model-override-picker" in css and "--bg: var(--lg-bg-elevated)" in css)
 check("popup viewport clamp", "clampFloatingPopup" in js and "installFloatingPopupGuard" in js and "viewportWidth - width - margin" in js and "max-width: calc(100vw - 16px)" in css)
+check("model popup exposes long identifiers", all(token in css for token in ["max-width: 380px", "max-height: calc(100vh - 88px)", "overflow-y: auto", "model-select-popup::-webkit-scrollbar"]))
 check("runtime process visibility", ".chat-msg.assistant.thinking" in css and ".chat-msg.tool" in css and ".dot-typing span" in css)
 check("long running message contrast", ".message.info" in css and ".message.success" in css and ".message.error" in css and "body.lingxi-graphite-v1 .message" in css)
 check("todo patch runtime surface", ".chat-todo-panel" in css and "#chatTodoPanel" in css and "max-height: 176px" in css and ".chat-todo-list" in css and "background: var(--lg-bg-container)" in css)

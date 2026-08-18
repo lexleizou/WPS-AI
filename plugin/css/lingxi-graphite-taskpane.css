@@ -901,19 +901,28 @@ body.lingxi-graphite-v1 .lg-composer-model .model-select-btn:hover,
 body.lingxi-graphite-v1 .lg-composer-model .model-select-btn[aria-expanded="true"] { border: 0; background: var(--lg-bg-hover); color: var(--lg-text); box-shadow: none; }
 body.lingxi-graphite-v1 .lg-composer-model .model-select-caps { display: none; }
 body.lingxi-graphite-v1 .lg-composer-model .model-select-caret { width: 12px; height: 12px; color: var(--lg-text-tertiary); }
+/* 模型标识往往很长；面板必须优先完整显示名称，而不是把 26 个模型藏在无提示的窄列表中。 */
 body.lingxi-graphite-v1 .lg-composer-model .model-select-popup {
   top: auto;
   right: 0;
   bottom: calc(100% + 8px);
   left: auto;
-  width: min(250px, calc(100vw - 38px));
-  max-height: min(360px, 60vh);
+  width: calc(100vw - 16px);
+  max-width: 380px;
+  max-height: calc(100vh - 88px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: var(--lg-text-disabled) transparent;
   border-color: var(--lg-border);
   border-radius: 8px;
   background: var(--lg-bg-elevated);
   color: var(--lg-text);
   box-shadow: var(--lg-shadow-float);
 }
+body.lingxi-graphite-v1 .lg-composer-model .model-select-popup::-webkit-scrollbar { width: 9px; }
+body.lingxi-graphite-v1 .lg-composer-model .model-select-popup::-webkit-scrollbar-thumb { border: 3px solid transparent; border-radius: 8px; background: var(--lg-text-disabled); background-clip: padding-box; }
+body.lingxi-graphite-v1 .lg-composer-model .model-select-popup-item-label { min-width: 0; }
 body.lingxi-graphite-v1 .model-select-popup-item { color: var(--lg-text); }
 body.lingxi-graphite-v1 .model-select-popup-item:hover,
 body.lingxi-graphite-v1 .model-group-head:hover { background: var(--lg-bg-hover); }
