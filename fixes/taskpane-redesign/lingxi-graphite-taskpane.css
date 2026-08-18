@@ -927,6 +927,14 @@ body.lingxi-graphite-v1 .model-select-popup-item { color: var(--lg-text); }
 body.lingxi-graphite-v1 .model-select-popup-item:hover,
 body.lingxi-graphite-v1 .model-group-head:hover { background: var(--lg-bg-hover); }
 body.lingxi-graphite-v1 .model-select-popup-item.selected { background: var(--lg-bg-active); color: var(--lg-text); }
+/* 选中模型会将列表滚至分组中部；保持当前供应商标题可见，避免裸模型被误认为 LiteLLM。 */
+body.lingxi-graphite-v1 .lg-composer-model .model-group-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--lg-bg-elevated);
+  box-shadow: 0 1px 0 var(--lg-border);
+}
 body.lingxi-graphite-v1 .model-group-head,
 body.lingxi-graphite-v1 .model-select-popup-item-caps { color: var(--lg-text-secondary); }
 body.lingxi-graphite-v1 .model-group-count { background: var(--lg-bg-subtle); color: var(--lg-text-tertiary); }
