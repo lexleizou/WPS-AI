@@ -1095,16 +1095,9 @@
     const modelId = String(select.value || rendered.split("·").pop() || "").trim();
     if (!modelId) return;
     const full = rendered.includes("·") ? rendered : (label.title || rendered || modelId);
-    // 已迁移到本机 Codex CLI 官方直连后，旧业务层仍会给选择器写入
-    // “Codex (ChatGPT OAuth) · …”。在窄 TaskPane 中它既被截断，又传达了过时的路由。
-    // 仅压缩这个视觉标签；真实 modelId 仍来自隐藏 select，完整身份保留在 title。
-    if (/^Codex\s*\(ChatGPT OAuth\)(?:\s*·\s*.*)?$/i.test(full)) {
-      const concise = "Codex · 直连";
-      if (label.textContent !== concise) label.textContent = concise;
-    }
     label.title = full;
     if (button) button.title = `当前模型：${modelId}（点击选择）`;
-    // 其他业务层模型名持续由原页面渲染；不得回写，避免两端互相覆盖造成闪烁。
+    // 业务层持续渲染完整模型名；不覆盖可见文案，避免内容被缩写或与业务层互相覆盖造成闪烁。
   }
 
   function formatTokens(value) {
@@ -1755,32 +1748,6 @@
     applyLiteLlmModelVisibility();
   }
 
-  function syncCodexModelPickerLabels() {
-    const popup = byId("modelSelectPopup");
-    if (!popup) return;
-    popup.querySelectorAll(".model-group-head[data-provider-id]").forEach((head) => {
-      const providerId = String(head.dataset.providerId || "");
-      const label = head.querySelector(".model-select-popup-item-label");
-      const current = String(label?.textContent || "").replace(/\s+/g, " ").trim();
-      const isCodex = /^(codex|codex-oauth)$/i.test(providerId) || /^[-▸▾\s]*Codex\s*\(ChatGPT OAuth\)/i.test(current);
-      if (!label || !isCodex || current.endsWith("Codex · 官方直连")) return;
-      const arrow = label.querySelector(".model-group-arrow");
-      label.replaceChildren();
-      if (arrow) label.append(arrow);
-      label.append(document.createTextNode(`${arrow ? " " : ""}Codex · 官方直连`));
-      head.title = "Codex CLI OAuth · 官方 OpenAI 直连";
-    });
-  }
-
-  function installCodexModelPickerLabels() {
-    const popup = byId("modelSelectPopup");
-    if (!popup || popup.dataset.lingxiCodexPickerLabels === "1") return;
-    popup.dataset.lingxiCodexPickerLabels = "1";
-    const refresh = () => window.requestAnimationFrame(syncCodexModelPickerLabels);
-    new MutationObserver(refresh).observe(popup, { childList: true, subtree: true });
-    syncCodexModelPickerLabels();
-  }
-
   function formatLiteLlmTokens(value) {
     const n = Number(value);
     return Number.isFinite(n) && n > 0 ? `${Math.round(n / 1000)}k` : "—";
@@ -2076,7 +2043,6 @@
   function installLiteLlmSettingsEnhancements() {
     ensureLiteLlmModelManager();
     installLiteLlmModelVisibilityBridge();
-    installCodexModelPickerLabels();
     installProviderModelManagement();
     installCodexOfficialDirectMigration();
     const serviceTab = document.querySelector('.settings-sidebar-btn[data-settings-panel="service"]');
@@ -2138,7 +2104,6 @@
     document.body.classList.add("lingxi-service-manager-v1");
     ensureLiteLlmModelManager();
     installLiteLlmModelVisibilityBridge();
-    installCodexModelPickerLabels();
     installProviderModelManagement();
     installCodexOfficialDirectMigration();
   }

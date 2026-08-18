@@ -880,11 +880,12 @@ body.lingxi-graphite-v1 .lingxi-context-tooltip {
   pointer-events: none;
 }
 body.lingxi-graphite-v1 .lingxi-context-tooltip[hidden] { display: none !important; }
+/* 当前模型是主操作信息：给它固定的可读宽度，而不是用文案缩写来迁就工具栏。 */
 body.lingxi-graphite-v1 .model-select-wrap.lg-composer-model {
-  flex: 0 1 132px;
+  flex: 0 1 300px;
   width: auto;
-  min-width: 86px;
-  max-width: 132px;
+  min-width: 220px;
+  max-width: 320px;
 }
 body.lingxi-graphite-v1 .lg-composer-model .model-select-btn {
   height: 32px;
@@ -909,7 +910,8 @@ body.lingxi-graphite-v1 .lg-composer-model .model-select-popup {
   left: auto;
   width: calc(100vw - 16px);
   max-width: 380px;
-  max-height: calc(100vh - 88px);
+  /* 保留可见的当前分组标题；过高的面板会上伸到 TaskPane 顶部而被遮挡。 */
+  max-height: min(360px, 60vh);
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -927,14 +929,6 @@ body.lingxi-graphite-v1 .model-select-popup-item { color: var(--lg-text); }
 body.lingxi-graphite-v1 .model-select-popup-item:hover,
 body.lingxi-graphite-v1 .model-group-head:hover { background: var(--lg-bg-hover); }
 body.lingxi-graphite-v1 .model-select-popup-item.selected { background: var(--lg-bg-active); color: var(--lg-text); }
-/* 选中模型会将列表滚至分组中部；保持当前供应商标题可见，避免裸模型被误认为 LiteLLM。 */
-body.lingxi-graphite-v1 .lg-composer-model .model-group-head {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  background: var(--lg-bg-elevated);
-  box-shadow: 0 1px 0 var(--lg-border);
-}
 body.lingxi-graphite-v1 .model-group-head,
 body.lingxi-graphite-v1 .model-select-popup-item-caps { color: var(--lg-text-secondary); }
 body.lingxi-graphite-v1 .model-group-count { background: var(--lg-bg-subtle); color: var(--lg-text-tertiary); }
@@ -1031,7 +1025,7 @@ body.lingxi-graphite-v1 .badge { border-color: var(--lg-border); background: var
   body.lingxi-graphite-v1 .chat-attachments,
   body.lingxi-graphite-v1 .chat-context-actions { margin-left: 10px; margin-right: 10px; }
   body.lingxi-graphite-v1 .lg-thinking-control { max-width: 70px; padding-left: 5px; padding-right: 5px; }
-  body.lingxi-graphite-v1 .model-select-wrap.lg-composer-model { flex-basis: 104px; max-width: 104px; }
+  body.lingxi-graphite-v1 .model-select-wrap.lg-composer-model { flex-basis: 180px; min-width: 150px; max-width: 200px; }
   body.lingxi-graphite-v1 .chat-input-toolbar { gap: 2px; padding-left: 5px; padding-right: 5px; }
   body.lingxi-graphite-v1 .lg-context-ring { margin-left: 2px; margin-right: 2px; }
 }
