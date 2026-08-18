@@ -12,7 +12,7 @@ TARGETS=[("plugin-wps",HOME/".lingxi-ai/plugin-wps"),("plugin-et",HOME/".lingxi-
 def sha(p): return hashlib.sha256(p.read_bytes()).hexdigest()
 def check_sources():
  for p in SOURCES.values():
-  if not p.exists() or MARKER not in p.read_text(): raise RuntimeError(f"bad source {p}")
+  if not p.exists() or "LINGXI_WRITER_HEADER_TABLE_WIDTH_V2" not in p.read_text(): raise RuntimeError(f"bad source {p}")
 def preflight():
  check_sources()
  for label,root in TARGETS:

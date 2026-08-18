@@ -34,7 +34,9 @@
   function validWidth(value) { const width = number(value); return width != null && width > 0 && width <= MAX_SAFE_WIDTH; }
   async function getColumnWidths(options = {}) { const located = tableOf(await documentOf(), options); return { ...located, table: undefined, metrics: metrics(located.table) }; }
   async function setColumnWidth(options = {}) {
-    const located = tableOf(await documentOf(), options), before = metrics(located.table), columnIndex = Number(options.columnIndex);
+    const located = tableOf(await documentOf(), options);
+    if (located.scope === "header") throw new Error("HEADER_COLUMN_WRITE_PAUSED：页眉裸列宽写入已暂停；异常或合并页眉必须先建立恢复档案，不能靠单列宽度修复。");
+    const before = metrics(located.table), columnIndex = Number(options.columnIndex);
     if (!Number.isInteger(columnIndex) || columnIndex < 1 || columnIndex > before.columnCount) throw new Error("columnIndex 无效。");
     if (!before.widths.every(validWidth)) throw new Error("UNSAFE_TABLE_COLUMNS：当前表格存在不可读或异常列宽，已拒绝写入。");
     if (String(options.expectedFingerprint || "") !== before.fingerprint) throw new Error("STALE_TABLE_COLUMN_WIDTHS：表格列宽已变化，请重新读取。");
@@ -53,6 +55,8 @@
     return { sectionIndex: located.sectionIndex, headerKind: located.headerKind, tableIndex: located.tableIndex, widths: reference.widths, structure, fingerprint: fingerprint({ widths: reference.widths, structure }) };
   }
   async function restoreHeaderWidths(options = {}) {
+    throw new Error("HEADER_WIDTH_RESTORE_PAUSED：跨节复制页眉列宽已暂停。它不能证明文档身份、页眉链接或合并关系安全，禁止继续写入。");
+    /* Legacy implementation intentionally retained below for audit only.
     const doc = await documentOf(), source = await getHeaderReference(options), expected = String(options.expectedReferenceFingerprint || "");
     if (expected !== source.fingerprint) throw new Error("STALE_HEADER_WIDTH_REFERENCE：健康源页眉列宽已变化，请重新读取参考值。");
     const targets = Array.isArray(options.targetSectionIndexes) ? [...new Set(options.targetSectionIndexes.map(Number).filter(Number.isInteger))] : [];
@@ -75,6 +79,7 @@
     // 任一目标复核失败即让真实工具调用失败，进度层不得把部分恢复渲染成“全部完成”。
     if (summary.failed) { const error = new Error(`HEADER_WIDTH_RESTORE_PARTIAL：${completed}/${summary.total} 节恢复成功，${summary.failed} 节失败。`); error.details = { source, results, summary }; throw error; }
     return { source, results, summary };
+    */
   }
   global.WpsAiTableColumnWidth = { getColumnWidths, setColumnWidth, getHeaderReference, restoreHeaderWidths, _internal: { metrics } };
 })(window);

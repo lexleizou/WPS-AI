@@ -1,1 +1,37 @@
-(function(g){const r=g.WpsAiToolRegistry,h=g.WpsAiHeaderTableGrid;if(!r||!h)return;const p={sectionIndex:{type:"integer",minimum:1},headerKind:{type:"string",enum:["primary","firstPage","evenPages"]},tableIndex:{type:"integer",minimum:1}};r.registerTool({name:"wps_get_header_table_grid",hosts:["wps"],description:"只读读取指定节页眉表格的真实行列、每行有效单元格、合并状态、文本和网格指纹。若第1/2行是两格而第3行是三格，这是结构不规则：后续必须调用 wps_normalize_header_table_row_to_three_columns，禁止先用列宽或整表宽度工具；不改内容或视图。",parameters:{type:"object",properties:p},handler:async a=>await h.grid(a)});r.registerTool({name:"wps_split_header_table_cell",hosts:["wps"],description:"【精确写入】仅拆分指定页眉表格的一个横向合并单元格。必须先读取网格并传 expectedFingerprint；不重建表格、不覆盖文本、不改其它行/正文/Logo/页码，写后复核该行恢复完整列数。",parameters:{type:"object",properties:{...p,row:{type:"integer",minimum:1},cellIndex:{type:"integer",minimum:1},columns:{type:"integer",minimum:2},expectedFingerprint:{type:"string"}},required:["sectionIndex","headerKind","tableIndex","row","cellIndex","columns","expectedFingerprint"]},handler:async()=>{throw new Error("HEADER_TABLE_GRID_WRITE_PAUSED：旧的裸拆分工具已暂停；请使用结构规范化工具。")}});r.registerTool({name:"wps_normalize_header_table_row_to_three_columns",hosts:["wps"],description:"【结构恢复写入·优先路径】当页眉第1或2行是两格、同表第3行是三格时，必须先用此工具恢复三列底层网格，再讨论列宽或整表宽度。将目标两格行在第2格右侧补出第3格后合并第2、3格，使右边界与参考三格行一致。不改Logo、文本、参考行、其它行或正文；先读取网格并传完整网格指纹，写后复核。",parameters:{type:"object",properties:{sectionIndex:{type:"integer",minimum:1},headerKind:{type:"string",enum:["primary","firstPage","evenPages"]},tableIndex:{type:"integer",minimum:1},row:{type:"integer",minimum:1},referenceRow:{type:"integer",minimum:1,default:3},expectedFingerprint:{type:"string"}},required:["sectionIndex","headerKind","tableIndex","row","expectedFingerprint"]},handler:async a=>await h.normalize(a)});})(window);
+(function (global) {
+  "use strict";
+  const registry = global.WpsAiToolRegistry, host = global.WpsAiHeaderTableGrid;
+  if (!registry || !host) return;
+  const location = {
+    sectionIndex: { type: "integer", minimum: 1 },
+    headerKind: { type: "string", enum: ["primary", "firstPage", "evenPages"] },
+    tableIndex: { type: "integer", minimum: 1 }
+  };
+  registry.registerTool({
+    name: "wps_get_header_table_recovery_profile", hosts: ["wps"],
+    description: "【页眉恢复的唯一前置只读工具】读取当前文档、指定节页眉和表格的身份文本、实际所有者节、LinkToPrevious、3×3 网格、合并/Logo/文本指纹及可写状态。任何页眉结构或宽度写入前必须先调用；若目标文档标题或文件编号不同、页眉链接到上一节、列宽异常或结构不健康，必须停止并只报告，不得猜测或写入。",
+    parameters: { type: "object", properties: location }, handler: async (args) => await host.recoveryProfile(args)
+  });
+  registry.registerTool({
+    name: "wps_get_header_table_grid", hosts: ["wps"],
+    description: "只读返回页眉恢复档案的网格部分，兼容旧流程。它不能授权写入；页眉写入必须改用 wps_get_header_table_recovery_profile 返回的最新 fingerprint。",
+    parameters: { type: "object", properties: location }, handler: async (args) => await host.grid(args)
+  });
+  registry.registerTool({
+    name: "wps_split_header_table_cell", hosts: ["wps"],
+    description: "已暂停：裸拆分会破坏合并关系、Logo 或列宽，禁止调用。",
+    parameters: { type: "object", properties: location }, handler: async () => { throw new Error("HEADER_TABLE_GRID_WRITE_PAUSED：请先建立恢复档案；仅可使用受保护的结构规范化工具。"); }
+  });
+  registry.registerTool({
+    name: "wps_normalize_header_table_row_to_three_columns", hosts: ["wps"],
+    description: "【受保护的最小结构写入】仅用于已审计的 3 行×3 列页眉：目标第 1/2 行为两格、参考第 3 行为三格。必须传入最新恢复档案 fingerprint，且 expectedHeaderText 必须来自用户指定的公司名、标题或文件编号；链接到上一节、目标身份不符、Logo/参考行不可保护时会在写前拒绝。写后强制验证 Logo、文本、参考行与合并结构；失败绝不宣称完成，也不得继续改列宽。",
+    parameters: { type: "object", properties: {
+      ...location,
+      row: { type: "integer", minimum: 1, maximum: 2 },
+      referenceRow: { type: "integer", minimum: 3, maximum: 3, default: 3 },
+      expectedRecoveryProfileFingerprint: { type: "string" },
+      expectedHeaderText: { type: "array", minItems: 1, items: { type: "string", minLength: 1 }, description: "来自用户任务的标题/文件编号/公司名；不得从当前文档猜测。" }
+    }, required: ["sectionIndex", "headerKind", "tableIndex", "row", "expectedRecoveryProfileFingerprint", "expectedHeaderText"] },
+    handler: async (args) => await host.normalize(args)
+  });
+})(window);
