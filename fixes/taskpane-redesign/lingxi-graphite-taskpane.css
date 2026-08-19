@@ -1,0 +1,1519 @@
+/* LINGXI_GRAPHITE_TASKPANE_V1 — Ant Design v6 × macOS Graphite */
+body.lingxi-graphite-v1 {
+  color-scheme: light dark;
+  --lg-bg-layout: #f5f5f5;
+  --lg-bg-container: #ffffff;
+  --lg-bg-elevated: #ffffff;
+  --lg-bg-subtle: rgba(0, 0, 0, 0.04);
+  --lg-bg-hover: rgba(0, 0, 0, 0.06);
+  --lg-bg-active: rgba(0, 0, 0, 0.09);
+  --lg-text: rgba(0, 0, 0, 0.88);
+  --lg-text-secondary: rgba(0, 0, 0, 0.65);
+  --lg-text-tertiary: rgba(0, 0, 0, 0.45);
+  --lg-text-disabled: rgba(0, 0, 0, 0.25);
+  --lg-border: rgba(5, 5, 5, 0.12);
+  --lg-divider: rgba(5, 5, 5, 0.06);
+  --lg-primary: #1f1f1f;
+  --lg-primary-hover: #3a3a3a;
+  --lg-primary-on: #ffffff;
+  --lg-success: #2f7d32;
+  --lg-warning: #9a6700;
+  --lg-error: #c0362c;
+  --lg-shadow-float: 0 6px 16px rgba(0,0,0,.08), 0 3px 6px -4px rgba(0,0,0,.12), 0 9px 28px 8px rgba(0,0,0,.05);
+
+  /* Rebind the app's semantic tokens without changing its business CSS. */
+  --background: var(--lg-bg-layout);
+  --bg: var(--lg-bg-elevated);
+  --surface: var(--lg-bg-hover);
+  --panel: var(--lg-bg-container);
+  --panel-bg: var(--lg-bg-container);
+  --panel-alt: var(--lg-bg-subtle);
+  --primary: var(--lg-primary);
+  --primary-hover: var(--lg-primary-hover);
+  --primary-soft: var(--lg-bg-subtle);
+  --primary-soft-hover: var(--lg-bg-hover);
+  --text: var(--lg-text);
+  --text-primary: var(--lg-text);
+  --text-secondary: var(--lg-text-secondary);
+  --text-muted: var(--lg-text-tertiary);
+  --muted: var(--lg-text-tertiary);
+  --border: var(--lg-border);
+  --border-strong: var(--lg-border);
+  --divider: var(--lg-divider);
+  --success: var(--lg-success);
+  --warning: var(--lg-warning);
+  --danger: var(--lg-error);
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 8px;
+  --shadow-sm: none;
+  --shadow-md: var(--lg-shadow-float);
+
+  margin: 0;
+  background: var(--lg-bg-layout);
+  color: var(--lg-text);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", sans-serif;
+  font-size: 14px;
+}
+
+@media (prefers-color-scheme: dark) {
+  body.lingxi-graphite-v1 {
+    --lg-bg-layout: #1c1c1e;
+    --lg-bg-container: #242426;
+    --lg-bg-elevated: #303033;
+    --lg-bg-subtle: rgba(255, 255, 255, 0.06);
+    --lg-bg-hover: rgba(255, 255, 255, 0.09);
+    --lg-bg-active: rgba(255, 255, 255, 0.13);
+    --lg-text: rgba(255, 255, 255, 0.88);
+    --lg-text-secondary: rgba(255, 255, 255, 0.65);
+    --lg-text-tertiary: rgba(255, 255, 255, 0.45);
+    --lg-text-disabled: rgba(255, 255, 255, 0.28);
+    --lg-border: rgba(255, 255, 255, 0.14);
+    --lg-divider: rgba(255, 255, 255, 0.08);
+    --lg-primary: #f0f0f0;
+    --lg-primary-hover: #ffffff;
+    --lg-primary-on: #151515;
+    --lg-success: #68a96b;
+    --lg-warning: #d6a84b;
+    --lg-error: #e56b62;
+    --lg-shadow-float: 0 10px 32px rgba(0,0,0,.42);
+  }
+}
+
+body.lingxi-graphite-v1 *,
+body.lingxi-graphite-v1 *::before,
+body.lingxi-graphite-v1 *::after { box-sizing: border-box; }
+
+body.lingxi-graphite-v1 button,
+body.lingxi-graphite-v1 textarea,
+body.lingxi-graphite-v1 input,
+body.lingxi-graphite-v1 select { font-family: inherit; }
+
+body.lingxi-graphite-v1 button:focus-visible,
+body.lingxi-graphite-v1 textarea:focus-visible,
+body.lingxi-graphite-v1 select:focus-visible {
+  outline: 2px solid var(--lg-text-tertiary);
+  outline-offset: 2px;
+}
+
+body.lingxi-graphite-v1 .app-shell {
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+  background: var(--lg-bg-container);
+}
+
+/* Product header */
+body.lingxi-graphite-v1 .app-header {
+  position: relative;
+  z-index: 60;
+  min-height: 42px;
+  padding: 6px 14px;
+  gap: 8px;
+  border: 0;
+  border-bottom: 1px solid var(--lg-divider);
+  border-radius: 0;
+  box-shadow: none;
+  background: var(--lg-bg-container);
+  color: var(--lg-text);
+}
+body.lingxi-graphite-v1 .brand { min-width: 0; gap: 0; }
+body.lingxi-graphite-v1 .brand-logo,
+body.lingxi-graphite-v1 .brand-version-row { display: none; }
+body.lingxi-graphite-v1 .brand-text-group { display: block; min-width: 0; }
+body.lingxi-graphite-v1 .brand-name {
+  margin: 0;
+  color: var(--lg-text);
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+  letter-spacing: .01em;
+}
+body.lingxi-graphite-v1 .header-controls { position: relative; flex: none; gap: 4px; }
+body.lingxi-graphite-v1 .lg-more-button {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--lg-text-secondary);
+  font-size: 17px;
+  line-height: 1;
+  letter-spacing: 1px;
+  cursor: pointer;
+}
+body.lingxi-graphite-v1 .lg-more-button:hover,
+body.lingxi-graphite-v1 .lg-more-button[aria-expanded="true"] { background: var(--lg-bg-hover); color: var(--lg-text); }
+body.lingxi-graphite-v1 .lg-more-menu {
+  position: absolute;
+  top: 42px;
+  right: 0;
+  z-index: 1000;
+  width: 196px;
+  padding: 5px;
+  border: 1px solid var(--lg-border);
+  border-radius: 8px;
+  background: var(--lg-bg-elevated);
+  box-shadow: var(--lg-shadow-float);
+  animation: lg-menu-in 160ms ease;
+}
+body.lingxi-graphite-v1 .lg-more-menu.hidden { display: none !important; }
+@keyframes lg-menu-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+body.lingxi-graphite-v1 .lg-menu-action {
+  width: 100%;
+  min-height: 32px;
+  margin: 0;
+  padding: 0 8px;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--lg-text);
+  font-size: 0;
+  text-align: left;
+  cursor: pointer;
+}
+body.lingxi-graphite-v1 .lg-menu-action:hover { background: var(--lg-bg-hover); color: var(--lg-text); }
+body.lingxi-graphite-v1 .lg-menu-action svg { width: 15px; height: 15px; }
+body.lingxi-graphite-v1 .lg-menu-action .pill-icon { display: inline-flex !important; font-size: 16px; line-height: 1; }
+body.lingxi-graphite-v1 .lg-menu-action > span:not(.lg-menu-label):not(.pill-icon) { display: none !important; }
+body.lingxi-graphite-v1 .lg-menu-label { display: block !important; min-width: 0; font-size: 12px; line-height: 18px; white-space: nowrap; }
+body.lingxi-graphite-v1 .lg-menu-status {
+  min-height: 26px;
+  margin-top: 4px;
+  padding: 6px 7px 1px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border-top: 1px solid var(--lg-divider);
+}
+body.lingxi-graphite-v1 .lg-menu-status:empty { display: none; }
+body.lingxi-graphite-v1 .lg-menu-status .badge { font-size: 11px; background: var(--lg-bg-subtle); color: var(--lg-text-secondary); border-color: transparent; }
+
+/* Primary tabs */
+body.lingxi-graphite-v1 .tab-bar {
+  position: relative;
+  z-index: 20;
+  min-height: 44px;
+  padding: 0 14px;
+  gap: 20px;
+  border: 0;
+  border-bottom: 1px solid var(--lg-divider);
+  border-radius: 0;
+  background: var(--lg-bg-container);
+  box-shadow: none;
+}
+body.lingxi-graphite-v1 .tab-bar .tab-btn {
+  position: relative;
+  align-self: stretch;
+  flex: none;
+  min-width: 0;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--lg-text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+}
+body.lingxi-graphite-v1 .tab-bar .tab-btn:hover { background: transparent; color: var(--lg-text); }
+body.lingxi-graphite-v1 .tab-bar .tab-btn.active { background: transparent; color: var(--lg-text); font-weight: 600; }
+body.lingxi-graphite-v1 .tab-bar .tab-btn.active::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: var(--lg-primary);
+}
+body.lingxi-graphite-v1 .tab-badge {
+  min-width: 18px;
+  height: 18px;
+  margin-left: 5px;
+  padding: 0 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 999px;
+  background: var(--lg-bg-active);
+  color: var(--lg-text-secondary);
+  font-size: 11px;
+}
+body.lingxi-graphite-v1 .lg-tab-spacer { display: none; }
+body.lingxi-graphite-v1 .tab-bar > .tab-bar-action { display: none !important; }
+
+/* Flat main views */
+body.lingxi-graphite-v1 .panel {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: var(--lg-bg-container);
+  box-shadow: none;
+}
+body.lingxi-graphite-v1 #aiView { gap: 0; }
+body.lingxi-graphite-v1 .chat-stream-wrap { margin: 0; background: var(--lg-bg-container); }
+body.lingxi-graphite-v1 .chat-stream {
+  padding: 16px 14px 22px;
+  border: 0;
+  border-radius: 0;
+  background: var(--lg-bg-container);
+  color: var(--lg-text);
+  scrollbar-color: var(--lg-text-disabled) transparent;
+}
+body.lingxi-graphite-v1 .chat-stream::-webkit-scrollbar { width: 9px; }
+body.lingxi-graphite-v1 .chat-stream::-webkit-scrollbar-thumb { border: 3px solid transparent; border-radius: 8px; background: var(--lg-text-disabled); background-clip: padding-box; }
+body.lingxi-graphite-v1 .chat-stream:empty::before {
+  content: "描述要检查或修改的内容，灵犀会在这里显示回答和工具进度。";
+  display: block;
+  max-width: 270px;
+  margin: 34px auto 0;
+  color: var(--lg-text-tertiary);
+  font-size: 13px;
+  line-height: 20px;
+  text-align: center;
+}
+body.lingxi-graphite-v1 .tl-msg { padding: 5px 2px; font-size: 14px; line-height: 1.6; }
+body.lingxi-graphite-v1 .tl-user {
+  max-width: 88%;
+  margin-bottom: 14px;
+  padding: 9px 11px;
+  border-radius: 8px 8px 2px 8px;
+  background: var(--lg-bg-active);
+  color: var(--lg-text);
+}
+body.lingxi-graphite-v1 .tl-assistant { padding: 5px 2px 9px; color: var(--lg-text); }
+body.lingxi-graphite-v1 .tl-meta,
+body.lingxi-graphite-v1 .tl-label { color: var(--lg-text-tertiary); font-size: 12px; }
+body.lingxi-graphite-v1 .tl-rail { margin-left: 5px; padding-left: 14px; border-left-color: var(--lg-divider); gap: 4px; }
+body.lingxi-graphite-v1 .tl-step { color: var(--lg-text-secondary); font-size: 12px; }
+body.lingxi-graphite-v1 .tl-step-process > .tl-step-head { cursor: pointer; }
+body.lingxi-graphite-v1 .tl-step-process > .tl-step-head:focus-visible { outline: 2px solid var(--lg-focus); outline-offset: 2px; border-radius: 4px; }
+body.lingxi-graphite-v1 .tl-step-process > .tl-step-head::after { content: "⌄"; margin-left: 4px; color: var(--lg-text-tertiary); font-size: 12px; }
+body.lingxi-graphite-v1 .tl-step-process > .tl-step-head[aria-expanded="true"]::after { content: "⌃"; }
+body.lingxi-graphite-v1 .tl-tool-row-head { cursor: pointer; }
+body.lingxi-graphite-v1 .tl-tool-row-head:focus-visible { outline: 2px solid var(--lg-focus); outline-offset: 2px; border-radius: 4px; }
+body.lingxi-graphite-v1 .tl-tool-row-head::after { content: "⌄"; margin-left: 4px; color: var(--lg-text-tertiary); font-size: 11px; }
+body.lingxi-graphite-v1 .tl-tool-row-head[aria-expanded="true"]::after { content: "⌃"; }
+body.lingxi-graphite-v1 .tl-tool-row-detail[hidden] { display: none !important; }
+body.lingxi-graphite-v1 .tl-step-detail {
+  padding: 7px 8px;
+  border-color: var(--lg-border);
+  border-radius: 7px;
+  background: var(--lg-bg-subtle);
+  color: var(--lg-text-secondary);
+}
+body.lingxi-graphite-v1 .tl-rail > .tl-step-process::before,
+body.lingxi-graphite-v1 .tl-rail > .tl-error::before { box-shadow: 0 0 0 2px var(--lg-bg-container); }
+body.lingxi-graphite-v1 .tl-rail > .tl-text:last-child::before { background: var(--lg-bg-container); }
+body.lingxi-graphite-v1 .tl-step.tl-text { color: var(--lg-text); font-size: 14px; }
+body.lingxi-graphite-v1 .tl-user-act:hover { color: var(--lg-text); background: var(--lg-bg-hover); }
+
+/* 旧 showThinking() 在工具轮次间仍会短暂挂载 .chat-msg.assistant.thinking。
+   原业务 CSS 把它固定为 #fff，深色 Graphite 下会变成白底白字的空卡片。 */
+body.lingxi-graphite-v1 .chat-msg.assistant.thinking {
+  background: var(--lg-bg-elevated);
+  border: 1px solid var(--lg-border);
+  color: var(--lg-text-secondary);
+  box-shadow: none;
+}
+body.lingxi-graphite-v1 .chat-msg.assistant.thinking .thinking-text { color: var(--lg-text-secondary); }
+body.lingxi-graphite-v1 .chat-msg.assistant.thinking .dot-typing span { background: var(--lg-text-tertiary); }
+
+/* 长文本粘贴会被有意转为临时 text 附件（避免撑满输入框）。
+   原 chip 固定 #fff，在深色主题中与浅色文字相撞，误看成空白方块。 */
+body.lingxi-graphite-v1 .chat-attach-chip {
+  background: var(--lg-bg-elevated);
+  border-color: var(--lg-border);
+  color: var(--lg-text);
+}
+body.lingxi-graphite-v1 .chat-attach-name { color: var(--lg-text); }
+body.lingxi-graphite-v1 .chat-attach-size,
+body.lingxi-graphite-v1 .chat-attach-remove,
+body.lingxi-graphite-v1 .chat-attach-preview { color: var(--lg-text-tertiary); }
+body.lingxi-graphite-v1 .chat-attach-remove:hover { background: var(--lg-bg-hover); color: var(--lg-error); }
+
+body.lingxi-graphite-v1 .chat-jump-latest { border-color: var(--lg-border); background: var(--lg-bg-elevated); color: var(--lg-text-secondary); box-shadow: var(--lg-shadow-float); }
+
+/* Legacy process blocks are still used while a turn is running; keep them readable in dark mode. */
+body.lingxi-graphite-v1 .chat-msg.assistant.thinking,
+body.lingxi-graphite-v1 .chat-msg.tool,
+body.lingxi-graphite-v1 .chat-msg.reasoning {
+  border-color: var(--lg-border);
+  background: var(--lg-bg-subtle);
+  color: var(--lg-text-secondary);
+  box-shadow: none;
+}
+body.lingxi-graphite-v1 .chat-msg.assistant.thinking .thinking-text,
+body.lingxi-graphite-v1 .chat-msg.tool .tool-head,
+body.lingxi-graphite-v1 .chat-msg.reasoning .tool-head,
+body.lingxi-graphite-v1 .chat-msg.tool .tool-body,
+body.lingxi-graphite-v1 .chat-msg.reasoning .reasoning-body { color: var(--lg-text-secondary); }
+body.lingxi-graphite-v1 .chat-msg.tool .tool-body,
+body.lingxi-graphite-v1 .chat-msg.reasoning .reasoning-body {
+  border-color: var(--lg-divider);
+  background: var(--lg-bg-container);
+}
+body.lingxi-graphite-v1 .chat-msg.tool.err { border-color: color-mix(in srgb, var(--lg-error) 38%, transparent); color: var(--lg-error); }
+body.lingxi-graphite-v1 .dot-typing span { background: var(--lg-text-secondary); }
+
+/* Writer Inspector: three read-only calls become one deterministic progress surface. */
+body.lingxi-graphite-v1 .lingxi-inspection-card {
+  width: 100%;
+  margin: 7px 0 9px;
+  overflow: hidden;
+  border: 1px solid var(--lg-border);
+  border-radius: 9px;
+  background: var(--lg-bg-container);
+  color: var(--lg-text);
+  box-shadow: none;
+}
+body.lingxi-graphite-v1 .lingxi-inspection-head {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto 16px;
+  align-items: center;
+  width: 100%;
+  min-height: 58px;
+  padding: 9px 11px;
+  gap: 8px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+body.lingxi-graphite-v1 .lingxi-inspection-head:hover { background: var(--lg-bg-hover); }
+body.lingxi-graphite-v1 .lingxi-inspection-head:focus-visible { outline: 2px solid var(--lg-text-secondary); outline-offset: -2px; }
+body.lingxi-graphite-v1 .lingxi-inspection-badge {
+  position: relative;
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--lg-border-strong);
+  border-radius: 50%;
+}
+body.lingxi-graphite-v1 .lingxi-inspection-badge::after {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border: 2px solid var(--lg-text-tertiary);
+  border-radius: 50%;
+}
+body.lingxi-graphite-v1 .lingxi-inspection-card[data-state="running"] .lingxi-inspection-badge::after {
+  border-top-color: transparent;
+  animation: lingxi-inspection-spin 900ms linear infinite;
+}
+body.lingxi-graphite-v1 .lingxi-inspection-card[data-state="done"] .lingxi-inspection-badge { border-color: var(--lg-success); }
+body.lingxi-graphite-v1 .lingxi-inspection-card[data-state="done"] .lingxi-inspection-badge::after { border-color: var(--lg-success); background: var(--lg-success); }
+body.lingxi-graphite-v1 .lingxi-inspection-card[data-state="incomplete"] .lingxi-inspection-badge,
+body.lingxi-graphite-v1 .lingxi-inspection-card[data-state="incomplete"] .lingxi-inspection-badge::after { border-color: var(--lg-warning); }
+body.lingxi-graphite-v1 .lingxi-inspection-card[data-state="error"] .lingxi-inspection-badge,
+body.lingxi-graphite-v1 .lingxi-inspection-card[data-state="error"] .lingxi-inspection-badge::after { border-color: var(--lg-error); }
+body.lingxi-graphite-v1 .lingxi-inspection-heading { min-width: 0; }
+body.lingxi-graphite-v1 .lingxi-inspection-title {
+  overflow: hidden;
+  color: var(--lg-text);
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+body.lingxi-graphite-v1 .lingxi-inspection-summary {
+  overflow: hidden;
+  margin-top: 1px;
+  color: var(--lg-text-tertiary);
+  font-size: 11px;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+body.lingxi-graphite-v1 .lingxi-inspection-count {
+  color: var(--lg-text-secondary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+body.lingxi-graphite-v1 .lingxi-inspection-chevron { color: var(--lg-text-tertiary); font-size: 13px; text-align: center; }
+body.lingxi-graphite-v1 .lingxi-inspection-body {
+  padding: 0 11px 10px 38px;
+}
+body.lingxi-graphite-v1 .lingxi-inspection-card.is-collapsed .lingxi-inspection-body { display: none; }
+body.lingxi-graphite-v1 .tl-step-process.lingxi-inspection-source-hidden { display: none !important; }
+body.lingxi-graphite-v1 .tl-step-status-stopped { border-color: var(--lg-text-tertiary); background: var(--lg-text-tertiary); }
+body.lingxi-graphite-v1 .lingxi-inspection-step {
+  position: relative;
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  min-height: 47px;
+  gap: 7px;
+}
+body.lingxi-graphite-v1 .lingxi-inspection-step:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  top: 14px;
+  bottom: -3px;
+  left: 5px;
+  width: 1px;
+  background: var(--lg-divider);
+}
+body.lingxi-graphite-v1 .lingxi-inspection-step-dot {
+  position: relative;
+  z-index: 1;
+  width: 9px;
+  height: 9px;
+  margin-top: 6px;
+  border: 2px solid var(--lg-border-strong);
+  border-radius: 50%;
+  background: var(--lg-bg-container);
+}
+body.lingxi-graphite-v1 .lingxi-inspection-step[data-status="running"] .lingxi-inspection-step-dot {
+  border-color: var(--lg-text-secondary);
+  box-shadow: 0 0 0 3px var(--lg-bg-active);
+  animation: lingxi-inspection-pulse 1.3s ease-in-out infinite;
+}
+body.lingxi-graphite-v1 .lingxi-inspection-step[data-status="ok"] .lingxi-inspection-step-dot { border-color: var(--lg-success); background: var(--lg-success); }
+body.lingxi-graphite-v1 .lingxi-inspection-step[data-status="error"] .lingxi-inspection-step-dot { border-color: var(--lg-error); background: var(--lg-error); }
+body.lingxi-graphite-v1 .lingxi-inspection-step[data-status="stopped"] .lingxi-inspection-step-dot { border-color: var(--lg-text-tertiary); background: var(--lg-text-tertiary); }
+body.lingxi-graphite-v1 .lingxi-inspection-step[data-status="not-required"] .lingxi-inspection-step-dot { border-color: var(--lg-text-disabled); background: transparent; }
+body.lingxi-graphite-v1 .lingxi-inspection-step-content { min-width: 0; padding-bottom: 8px; }
+body.lingxi-graphite-v1 .lingxi-inspection-step-top { display: flex; align-items: baseline; min-width: 0; gap: 8px; }
+body.lingxi-graphite-v1 .lingxi-inspection-step-label {
+  overflow: hidden;
+  min-width: 0;
+  color: var(--lg-text);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 19px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+body.lingxi-graphite-v1 .lingxi-inspection-step-state {
+  margin-left: auto;
+  color: var(--lg-text-tertiary);
+  font-size: 11px;
+  line-height: 18px;
+  white-space: nowrap;
+}
+body.lingxi-graphite-v1 .lingxi-inspection-step[data-status="running"] .lingxi-inspection-step-state { color: var(--lg-text-secondary); }
+body.lingxi-graphite-v1 .lingxi-inspection-step[data-status="ok"] .lingxi-inspection-step-state { color: var(--lg-success); }
+body.lingxi-graphite-v1 .lingxi-inspection-step[data-status="error"] .lingxi-inspection-step-state { color: var(--lg-error); }
+body.lingxi-graphite-v1 .lingxi-inspection-step[data-status="not-required"] .lingxi-inspection-step-state { color: var(--lg-text-tertiary); }
+body.lingxi-graphite-v1 .lingxi-inspection-step-detail {
+  overflow: hidden;
+  color: var(--lg-text-tertiary);
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: 10.5px;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+body.lingxi-graphite-v1 .lingxi-inspection-live {
+  display: flex;
+  align-items: center;
+  min-height: 49px;
+  margin: 0 12px 8px;
+  padding: 7px 9px;
+  gap: 9px;
+  border: 1px solid var(--lg-divider);
+  border-radius: 8px;
+  background: var(--lg-bg-subtle);
+  color: var(--lg-text);
+}
+body.lingxi-graphite-v1 .lingxi-inspection-live.hidden { display: none; }
+body.lingxi-graphite-v1 .lingxi-inspection-live-pulse {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  border: 2px solid var(--lg-text-tertiary);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: lingxi-inspection-spin 800ms linear infinite;
+}
+body.lingxi-graphite-v1 .lingxi-inspection-live-copy { min-width: 0; flex: 1; }
+body.lingxi-graphite-v1 .lingxi-inspection-live-title {
+  overflow: hidden;
+  color: var(--lg-text);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 17px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+body.lingxi-graphite-v1 .lingxi-inspection-live-subtitle {
+  overflow: hidden;
+  color: var(--lg-text-tertiary);
+  font-size: 10.5px;
+  line-height: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+body.lingxi-graphite-v1 .lingxi-inspection-live-stop {
+  min-width: 42px;
+  min-height: 28px;
+  padding: 0 7px;
+  flex: none;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--lg-text-secondary);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+body.lingxi-graphite-v1 .lingxi-inspection-live-stop:hover { background: var(--lg-bg-hover); color: var(--lg-text); }
+body.lingxi-graphite-v1 .lingxi-inspection-live-stop:focus-visible { outline: 2px solid var(--lg-text-secondary); outline-offset: 1px; }
+@keyframes lingxi-inspection-spin { to { transform: rotate(360deg); } }
+@keyframes lingxi-inspection-pulse { 50% { opacity: 0.45; } }
+
+/* Runtime state strips */
+body.lingxi-graphite-v1 .doc-lock-banner,
+body.lingxi-graphite-v1 .chat-progress,
+body.lingxi-graphite-v1 .chat-pending,
+body.lingxi-graphite-v1 .skill-suggest-bar,
+body.lingxi-graphite-v1 .chat-model-override-bar,
+body.lingxi-graphite-v1 .chat-attachments,
+body.lingxi-graphite-v1 .chat-context-actions {
+  margin-left: 12px;
+  margin-right: 12px;
+}
+body.lingxi-graphite-v1 .doc-lock-banner,
+body.lingxi-graphite-v1 .chat-progress {
+  border-color: transparent;
+  border-radius: 7px;
+  background: var(--lg-bg-subtle);
+  color: var(--lg-text);
+}
+body.lingxi-graphite-v1 .doc-lock-bar,
+body.lingxi-graphite-v1 .chat-progress-bar { background: var(--lg-bg-active); }
+body.lingxi-graphite-v1 .doc-lock-bar-inner,
+body.lingxi-graphite-v1 .chat-progress-bar-inner { background: var(--lg-text-secondary); }
+
+/* The task checklist is generated by the original todo_patch flow; neutralize its legacy white surface. */
+body.lingxi-graphite-v1 .chat-todo-panel,
+body.lingxi-graphite-v1 #chatTodoPanel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  max-height: 176px;
+  overflow: hidden;
+  border-color: var(--lg-border);
+  background: var(--lg-bg-container);
+  color: var(--lg-text);
+  box-shadow: none;
+}
+body.lingxi-graphite-v1 .chat-todo-head { color: var(--lg-text); }
+body.lingxi-graphite-v1 .chat-todo-head:hover .chat-todo-title { color: var(--lg-text); }
+body.lingxi-graphite-v1 .chat-todo-title { color: var(--lg-text); }
+body.lingxi-graphite-v1 .chat-todo-count,
+body.lingxi-graphite-v1 .chat-todo-chevron,
+body.lingxi-graphite-v1 .chat-todo-status { color: var(--lg-text-tertiary); }
+body.lingxi-graphite-v1 .chat-todo-bar { background: var(--lg-bg-active); }
+body.lingxi-graphite-v1 .chat-todo-bar-inner { background: var(--lg-text-secondary); }
+body.lingxi-graphite-v1 .chat-todo-list {
+  min-height: 0;
+  max-height: 126px;
+  overflow-y: auto;
+  scrollbar-color: var(--lg-text-disabled) transparent;
+}
+body.lingxi-graphite-v1 .chat-todo-item { color: var(--lg-text-secondary); }
+body.lingxi-graphite-v1 .chat-todo-dot { background: var(--lg-text-tertiary); }
+body.lingxi-graphite-v1 .chat-todo-item.in_progress .chat-todo-dot { background: var(--lg-text-secondary); }
+body.lingxi-graphite-v1 .chat-todo-item.completed .chat-todo-dot { background: var(--lg-success); }
+body.lingxi-graphite-v1 .chat-todo-item.failed .chat-todo-dot { background: var(--lg-error); }
+body.lingxi-graphite-v1 .chat-todo-item.skipped .chat-todo-dot { background: var(--lg-warning); }
+
+/* Document-wide changes are staged as a conversational map/summary preview before any WPS write. */
+body.lingxi-graphite-v1 .lingxi-write-preview-gate {
+  display: block;
+  margin: 0 12px 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--lg-border);
+  border-radius: 6px;
+  background: var(--lg-bg-active);
+  color: var(--lg-text-secondary);
+  font-size: 12px;
+  line-height: 18px;
+}
+body.lingxi-graphite-v1 .lingxi-write-preview-gate.hidden { display: none; }
+body.lingxi-graphite-v1 .lingxi-write-preview-gate[data-phase="previewing"] { border-color: var(--lg-warning); color: var(--lg-text); }
+body.lingxi-graphite-v1 .lingxi-write-preview-gate[data-phase="preview_failed"] { border-color: var(--lg-error); color: var(--lg-error); }
+body.lingxi-graphite-v1 .lingxi-write-preview-gate[data-phase="awaiting_confirmation"] { border-color: var(--lg-warning); color: var(--lg-text); }
+body.lingxi-graphite-v1 .lingxi-write-preview-gate[data-phase="approved"] { border-color: var(--lg-success); }
+@media (max-width: 420px) { body.lingxi-graphite-v1 .lingxi-write-preview-gate { margin-inline: 8px; } }
+
+/* Proma-style task progress: the original todo tools remain the source of truth; this is presentation only. */
+body.lingxi-graphite-v1 #chatTodoPanel.lingxi-task-progress {
+  display: block;
+  box-sizing: border-box;
+  max-height: 176px;
+  margin: 0 12px 8px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--lg-border);
+  border-radius: 8px;
+  background: var(--lg-bg-elevated);
+  color: var(--lg-text);
+}
+body.lingxi-graphite-v1 .lingxi-task-compact {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  width: 100%; min-height: 34px;
+  gap: 8px; padding: 7px 10px;
+  border: 0; background: transparent; color: inherit;
+  cursor: pointer; text-align: left;
+}
+body.lingxi-graphite-v1 .lingxi-task-compact:hover { background: var(--lg-bg-active); }
+body.lingxi-graphite-v1 .lingxi-task-compact:focus-visible { outline: 2px solid var(--lg-focus); outline-offset: -2px; }
+body.lingxi-graphite-v1 .lingxi-task-compact-icon,
+body.lingxi-graphite-v1 .lingxi-task-item-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px; color: var(--lg-text-tertiary); font-size: 13px; line-height: 1;
+}
+body.lingxi-graphite-v1 .lingxi-task-compact-copy { display: flex; min-width: 0; gap: 8px; align-items: baseline; }
+body.lingxi-graphite-v1 .lingxi-task-compact-copy span:first-child { flex: none; font-variant-numeric: tabular-nums; font-size: 12px; color: var(--lg-text-secondary); }
+body.lingxi-graphite-v1 .lingxi-task-compact-copy span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: var(--lg-text); }
+body.lingxi-graphite-v1 .lingxi-task-compact-status,
+body.lingxi-graphite-v1 .lingxi-task-head-status,
+body.lingxi-graphite-v1 .lingxi-task-item-status { flex: none; color: var(--lg-text-tertiary); font-size: 12px; white-space: nowrap; }
+body.lingxi-graphite-v1 .lingxi-task-detail { box-sizing: border-box; display: flex; flex-direction: column; max-height: 141px; border-top: 1px solid var(--lg-border); padding: 8px 10px 9px; }
+body.lingxi-graphite-v1 #chatTodoPanel.lingxi-task-progress[data-expanded="true"] { max-height: min(360px, calc(100vh - 180px)); }
+body.lingxi-graphite-v1 #chatTodoPanel.lingxi-task-progress[data-expanded="true"] .lingxi-task-detail { max-height: min(319px, calc(100vh - 221px)); }
+body.lingxi-graphite-v1 .lingxi-task-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+body.lingxi-graphite-v1 .lingxi-task-heading { display: flex; min-width: 0; align-items: baseline; gap: 8px; }
+body.lingxi-graphite-v1 .lingxi-task-heading strong { font-size: 13px; font-weight: 600; }
+body.lingxi-graphite-v1 .lingxi-task-heading span { font-size: 12px; color: var(--lg-text-tertiary); font-variant-numeric: tabular-nums; }
+body.lingxi-graphite-v1 .lingxi-task-bar { height: 3px; overflow: hidden; margin: 7px 0; border-radius: 99px; background: var(--lg-bg-active); }
+body.lingxi-graphite-v1 .lingxi-task-bar > span { display: block; height: 100%; min-width: 0; border-radius: inherit; background: var(--lg-text-secondary); transition: width 200ms ease; }
+body.lingxi-graphite-v1 .lingxi-task-list { display: flex; flex: 0 1 51px; flex-direction: column; gap: 3px; min-height: 0; max-height: 51px; margin: 0; padding: 0; overflow: auto; list-style: none; scrollbar-color: var(--lg-text-disabled) transparent; }
+body.lingxi-graphite-v1 #chatTodoPanel.lingxi-task-progress[data-expanded="true"] .lingxi-task-list { flex: 1 1 auto; max-height: none; }
+body.lingxi-graphite-v1 .lingxi-task-item { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; gap: 6px; align-items: start; min-height: 24px; color: var(--lg-text-secondary); }
+body.lingxi-graphite-v1 .lingxi-task-item-content { display: flex; min-width: 0; flex-direction: column; }
+body.lingxi-graphite-v1 .lingxi-task-item-content > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+body.lingxi-graphite-v1 .lingxi-task-item-content small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--lg-text-tertiary); font-size: 11px; line-height: 14px; }
+body.lingxi-graphite-v1 .lingxi-task-foot { flex: none; margin-top: 6px; color: var(--lg-text-tertiary); font-size: 12px; line-height: 16px; }
+body.lingxi-graphite-v1 #chatTodoPanel.lingxi-task-progress[data-state="running"] .lingxi-task-compact-icon,
+body.lingxi-graphite-v1 .lingxi-task-item[data-status="in_progress"] .lingxi-task-item-icon { color: var(--lg-text); animation: lg-task-pulse 1.2s ease-in-out infinite; }
+body.lingxi-graphite-v1 #chatTodoPanel.lingxi-task-progress[data-state="done"] .lingxi-task-compact-icon,
+body.lingxi-graphite-v1 .lingxi-task-item[data-status="completed"] .lingxi-task-item-icon { color: var(--lg-success); }
+body.lingxi-graphite-v1 #chatTodoPanel.lingxi-task-progress[data-state="failed"] .lingxi-task-compact-icon,
+body.lingxi-graphite-v1 .lingxi-task-item[data-status="failed"] .lingxi-task-item-icon { color: var(--lg-error); }
+body.lingxi-graphite-v1 #chatTodoPanel.lingxi-task-progress[data-state="stopped"] .lingxi-task-compact-icon,
+body.lingxi-graphite-v1 .lingxi-task-item[data-status="stopped"] .lingxi-task-item-icon { color: var(--lg-warning); }
+body.lingxi-graphite-v1 #chatTodoPanel.lingxi-task-progress[data-state="blocked"] .lingxi-task-compact-icon,
+body.lingxi-graphite-v1 .lingxi-task-item[data-status="blocked"] .lingxi-task-item-icon { color: var(--lg-text-tertiary); }
+@keyframes lg-task-pulse { 50% { opacity: .45; } }
+@media (prefers-reduced-motion: reduce) { body.lingxi-graphite-v1 .lingxi-task-compact-icon, body.lingxi-graphite-v1 .lingxi-task-item-icon { animation: none !important; } body.lingxi-graphite-v1 .lingxi-task-bar > span { transition: none; } }
+@media (max-width: 420px) { body.lingxi-graphite-v1 #chatTodoPanel.lingxi-task-progress { margin-inline: 8px; } body.lingxi-graphite-v1 .lingxi-task-compact { gap: 6px; padding-inline: 8px; } body.lingxi-graphite-v1 .lingxi-task-compact-status, body.lingxi-graphite-v1 .lingxi-task-item-status { font-size: 11px; } }
+
+/* Long-running operations call the original showMessage(). Its legacy info blue is too dark in Graphite dark mode. */
+body.lingxi-graphite-v1 .message {
+  border-color: var(--lg-border);
+  background: var(--lg-bg-elevated);
+  color: var(--lg-text);
+  box-shadow: var(--lg-shadow-float);
+}
+body.lingxi-graphite-v1 .message.info {
+  border-left-color: var(--lg-text-secondary);
+  background: var(--lg-bg-elevated);
+  color: var(--lg-text);
+}
+body.lingxi-graphite-v1 .message.success {
+  border-left-color: var(--lg-success);
+  background: var(--lg-bg-elevated);
+  color: var(--lg-text);
+}
+body.lingxi-graphite-v1 .message.error {
+  border-left-color: var(--lg-error);
+  background: var(--lg-bg-elevated);
+  color: var(--lg-text);
+}
+
+/* Revision mode — original IDs/events retained */
+body.lingxi-graphite-v1 .revise-mode-bar {
+  min-height: 34px;
+  margin: 0 12px 8px;
+  padding: 4px 7px;
+  gap: 7px;
+  border: 1px solid var(--lg-divider);
+  border-radius: 7px;
+  background: var(--lg-bg-container);
+  color: var(--lg-text-secondary);
+}
+body.lingxi-graphite-v1 .revise-toggle { gap: 7px; }
+body.lingxi-graphite-v1 .revise-toggle-track {
+  width: 28px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--lg-bg-active);
+}
+body.lingxi-graphite-v1 .revise-toggle-thumb {
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  background: var(--lg-bg-container);
+  box-shadow: 0 1px 2px rgba(0,0,0,.18);
+}
+body.lingxi-graphite-v1 .revise-toggle input:checked + .revise-toggle-track { background: var(--lg-success); }
+body.lingxi-graphite-v1 .revise-toggle input:checked + .revise-toggle-track .revise-toggle-thumb { transform: translateX(12px); }
+body.lingxi-graphite-v1 .revise-toggle-text { gap: 0; color: var(--lg-text-secondary); font-size: 12px; font-weight: 600; }
+body.lingxi-graphite-v1 .revise-toggle-text svg { display: none; }
+body.lingxi-graphite-v1 .revise-toggle-text::after { content: " · 关闭"; margin-left: 3px; color: var(--lg-text-tertiary); font-weight: 400; }
+body.lingxi-graphite-v1 .revise-toggle input:checked ~ .revise-toggle-text::after { content: " · 开启"; }
+body.lingxi-graphite-v1 .revise-mode-actions { margin-left: auto; gap: 3px; }
+body.lingxi-graphite-v1 .revise-act-btn {
+  min-height: 26px;
+  padding: 0 6px;
+  gap: 3px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--lg-text-secondary);
+  font-size: 12px;
+}
+body.lingxi-graphite-v1 .revise-act-btn svg { display: none; }
+body.lingxi-graphite-v1 .revise-act-btn:hover { background: var(--lg-bg-hover); color: var(--lg-text); }
+body.lingxi-graphite-v1 .revise-act-reject { color: var(--lg-text-secondary); }
+body.lingxi-graphite-v1 .revise-act-reject:hover { background: var(--lg-bg-hover); color: var(--lg-error); }
+
+/* Composer inspired by the confirmed reference, without voice input. */
+body.lingxi-graphite-v1 .chat-input-box {
+  position: relative;
+  z-index: 40;
+  flex: none;
+  min-height: 122px;
+  margin: 0 12px 12px;
+  overflow: visible;
+  border: 1px solid var(--lg-border);
+  border-radius: 8px;
+  background: var(--lg-bg-container);
+  box-shadow: none;
+  transition: border-color 100ms, box-shadow 100ms;
+}
+body.lingxi-graphite-v1 .chat-input-box:focus-within { border-color: var(--lg-text-tertiary); box-shadow: 0 0 0 3px var(--lg-bg-subtle); }
+body.lingxi-graphite-v1 .chat-input-box.drag-over { border-color: var(--lg-text-secondary); background: var(--lg-bg-subtle); box-shadow: 0 0 0 3px var(--lg-bg-subtle); }
+body.lingxi-graphite-v1 .chat-input-box textarea {
+  min-height: 76px;
+  max-height: min(180px, 28vh);
+  padding: 11px 42px 4px 12px;
+  background: transparent;
+  color: var(--lg-text);
+  caret-color: var(--lg-text);
+  font-size: 14px;
+  line-height: 21px;
+}
+body.lingxi-graphite-v1 .chat-input-box textarea::placeholder { color: var(--lg-text-tertiary); }
+body.lingxi-graphite-v1 .chat-input-paste-btn {
+  border-color: transparent;
+  background: transparent;
+  color: var(--lg-text-tertiary);
+}
+body.lingxi-graphite-v1 .chat-input-paste-btn:hover { border-color: transparent; background: var(--lg-bg-hover); color: var(--lg-text); }
+body.lingxi-graphite-v1 .chat-input-toolbar {
+  min-height: 44px;
+  padding: 5px 7px 7px;
+  gap: 3px;
+}
+body.lingxi-graphite-v1 .chat-toolbar-btn {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--lg-text-secondary);
+}
+body.lingxi-graphite-v1 .chat-toolbar-btn:hover:not(:disabled) { background: var(--lg-bg-hover); color: var(--lg-text); }
+body.lingxi-graphite-v1 .chat-toolbar-btn svg { width: 18px; height: 18px; }
+body.lingxi-graphite-v1 .lg-thinking-control {
+  height: 32px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--lg-text-secondary);
+  font-size: 12px;
+}
+body.lingxi-graphite-v1 .lg-thinking-control svg { display: none; }
+body.lingxi-graphite-v1 .lg-thinking-control::before { content: "思考 · "; }
+body.lingxi-graphite-v1 .lg-thinking-control:hover { background: var(--lg-bg-hover); color: var(--lg-text); }
+body.lingxi-graphite-v1 .lg-cap-secondary { display: none !important; }
+body.lingxi-graphite-v1 .lg-context-ring {
+  position: relative;
+  width: 15px;
+  height: 15px;
+  margin: 0 4px;
+  flex: none;
+  border-radius: 50%;
+  cursor: help;
+  background: conic-gradient(var(--lg-text-secondary) 0 var(--lg-context-pct, 0%), var(--lg-bg-active) var(--lg-context-pct, 0%) 100%);
+}
+body.lingxi-graphite-v1 .lg-context-ring::after {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  inset: 2.5px;
+  border-radius: 50%;
+  background: var(--lg-bg-container);
+}
+body.lingxi-graphite-v1 .lingxi-context-tooltip {
+  position: fixed;
+  z-index: 3200;
+  width: max-content;
+  padding: 7px 9px;
+  border: 1px solid var(--lg-border);
+  border-radius: 7px;
+  background: var(--lg-bg-elevated);
+  color: var(--lg-text);
+  box-shadow: var(--lg-shadow-float);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 16px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+}
+body.lingxi-graphite-v1 .lingxi-context-tooltip[hidden] { display: none !important; }
+/* 模型控件按“供应商 · 模型”实际文案自适应；超长时保持上限并保留完整 title。 */
+body.lingxi-graphite-v1 .model-select-wrap.lg-composer-model {
+  flex: 0 1 var(--lg-model-control-width, 176px);
+  width: var(--lg-model-control-width, 176px);
+  min-width: 128px;
+  max-width: min(360px, calc(100vw - 160px));
+}
+body.lingxi-graphite-v1 .lg-composer-model .model-select-btn {
+  width: 100%;
+  height: 32px;
+  padding: 0 7px;
+  gap: 4px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--lg-text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+}
+body.lingxi-graphite-v1 .lg-composer-model .model-select-btn:hover,
+body.lingxi-graphite-v1 .lg-composer-model .model-select-btn[aria-expanded="true"] { border: 0; background: var(--lg-bg-hover); color: var(--lg-text); box-shadow: none; }
+body.lingxi-graphite-v1 .lg-composer-model .model-select-caps { display: none; }
+body.lingxi-graphite-v1 .lg-composer-model .model-select-caret { width: 12px; height: 12px; color: var(--lg-text-tertiary); }
+/* 模型标识往往很长；面板必须优先完整显示名称，而不是把 26 个模型藏在无提示的窄列表中。 */
+body.lingxi-graphite-v1 .lg-composer-model .model-select-popup {
+  top: auto;
+  right: 0;
+  bottom: calc(100% + 8px);
+  left: auto;
+  width: calc(100vw - 16px);
+  max-width: 380px;
+  /* 保留可见的当前分组标题；过高的面板会上伸到 TaskPane 顶部而被遮挡。 */
+  max-height: min(360px, 60vh);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: var(--lg-text-disabled) transparent;
+  border-color: var(--lg-border);
+  border-radius: 8px;
+  background: var(--lg-bg-elevated);
+  color: var(--lg-text);
+  box-shadow: var(--lg-shadow-float);
+}
+body.lingxi-graphite-v1 .lg-composer-model .model-select-popup::-webkit-scrollbar { width: 9px; }
+body.lingxi-graphite-v1 .lg-composer-model .model-select-popup::-webkit-scrollbar-thumb { border: 3px solid transparent; border-radius: 8px; background: var(--lg-text-disabled); background-clip: padding-box; }
+body.lingxi-graphite-v1 .lg-composer-model .model-select-popup-item-label { min-width: 0; }
+body.lingxi-graphite-v1 .model-select-popup-item { color: var(--lg-text); }
+body.lingxi-graphite-v1 .model-select-popup-item:hover,
+body.lingxi-graphite-v1 .model-group-head:hover { background: var(--lg-bg-hover); }
+body.lingxi-graphite-v1 .model-select-popup-item.selected { background: var(--lg-bg-active); color: var(--lg-text); }
+body.lingxi-graphite-v1 .model-group-head,
+body.lingxi-graphite-v1 .model-select-popup-item-caps { color: var(--lg-text-secondary); }
+body.lingxi-graphite-v1 .model-group-count { background: var(--lg-bg-subtle); color: var(--lg-text-tertiary); }
+
+/* The app creates these two menus directly under body. Original CSS hard-codes a white panel. */
+body.lingxi-graphite-v1 .thinking-menu,
+body.lingxi-graphite-v1 .chat-model-override-picker {
+  box-sizing: border-box;
+  max-width: calc(100vw - 16px);
+  border-color: var(--lg-border);
+  background: var(--lg-bg-elevated);
+  color: var(--lg-text);
+  box-shadow: var(--lg-shadow-float);
+}
+body.lingxi-graphite-v1 .chat-model-override-picker {
+  width: min(320px, calc(100vw - 16px));
+  min-width: min(220px, calc(100vw - 16px));
+  overflow-x: hidden;
+}
+body.lingxi-graphite-v1 .thinking-menu-title,
+body.lingxi-graphite-v1 .chat-model-override-group { border-color: var(--lg-divider); color: var(--lg-text-tertiary); }
+body.lingxi-graphite-v1 .thinking-menu-item,
+body.lingxi-graphite-v1 .chat-model-override-item { background: transparent; color: var(--lg-text); }
+body.lingxi-graphite-v1 .thinking-menu-item:hover,
+body.lingxi-graphite-v1 .chat-model-override-item:hover { background: var(--lg-bg-hover); color: var(--lg-text); }
+body.lingxi-graphite-v1 .thinking-menu-item.active,
+body.lingxi-graphite-v1 .chat-model-override-item.selected { background: var(--lg-bg-active); color: var(--lg-text); }
+body.lingxi-graphite-v1 .thinking-menu-check { color: var(--lg-text-secondary); }
+body.lingxi-graphite-v1 .chat-model-override-empty { color: var(--lg-text-tertiary); }
+
+body.lingxi-graphite-v1 .lg-send-button {
+  width: 32px;
+  height: 32px;
+  border-radius: 7px;
+  background: var(--lg-primary);
+  color: var(--lg-primary-on);
+}
+body.lingxi-graphite-v1 .lg-send-button:hover:not(:disabled) { background: var(--lg-primary-hover); color: var(--lg-primary-on); }
+body.lingxi-graphite-v1 .lg-send-glyph { font-size: 20px; line-height: 1; transform: translateY(-1px); }
+body.lingxi-graphite-v1 #chatStopBtn.lg-send-button { background: var(--lg-bg-active); color: var(--lg-text); }
+
+/* History and image views */
+body.lingxi-graphite-v1 #historyView,
+body.lingxi-graphite-v1 #imageView { padding: 16px 14px; overflow-y: auto; }
+body.lingxi-graphite-v1 #historyView .panel-header,
+body.lingxi-graphite-v1 #imageView .panel-header { margin: 0 0 14px; }
+body.lingxi-graphite-v1 #historyView .panel-header h2,
+body.lingxi-graphite-v1 #imageView .panel-header h2 { font-size: 18px; line-height: 25px; }
+body.lingxi-graphite-v1 .history-doc-bar,
+body.lingxi-graphite-v1 .history-toolbar,
+body.lingxi-graphite-v1 .history-item,
+body.lingxi-graphite-v1 .image-gen-panel {
+  border-color: var(--lg-border);
+  background: var(--lg-bg-container);
+  color: var(--lg-text);
+  box-shadow: none;
+}
+body.lingxi-graphite-v1 .history-item:hover { background: var(--lg-bg-subtle); }
+body.lingxi-graphite-v1 .history-empty,
+body.lingxi-graphite-v1 .image-task-empty { color: var(--lg-text-tertiary); }
+
+/* Existing context controls and small buttons */
+body.lingxi-graphite-v1 .chat-context-btn,
+body.lingxi-graphite-v1 .ghost-btn,
+body.lingxi-graphite-v1 .secondary-btn {
+  border-color: var(--lg-border);
+  background: var(--lg-bg-container);
+  color: var(--lg-text-secondary);
+}
+body.lingxi-graphite-v1 .chat-context-btn:hover,
+body.lingxi-graphite-v1 .ghost-btn:hover { border-color: var(--lg-border); background: var(--lg-bg-hover); color: var(--lg-text); }
+body.lingxi-graphite-v1 .primary-btn { border-color: var(--lg-primary); background: var(--lg-primary); color: var(--lg-primary-on); }
+body.lingxi-graphite-v1 .badge { border-color: var(--lg-border); background: var(--lg-bg-subtle); color: var(--lg-text-secondary); }
+
+@media (max-width: 420px) {
+  body.lingxi-graphite-v1 .lingxi-inspection-head { grid-template-columns: 22px minmax(0, 1fr) auto 14px; padding-left: 9px; padding-right: 8px; gap: 6px; }
+  body.lingxi-graphite-v1 .lingxi-inspection-body { padding-left: 34px; padding-right: 9px; }
+  body.lingxi-graphite-v1 .lingxi-inspection-live { margin-left: 10px; margin-right: 10px; }
+  body.lingxi-graphite-v1 .lingxi-inspection-live-subtitle { max-width: 210px; }
+}
+
+@media (max-width: 390px) {
+  body.lingxi-graphite-v1 .app-header { min-height: 42px; padding: 6px 12px; }
+  body.lingxi-graphite-v1 .brand-logo { display: none; }
+  body.lingxi-graphite-v1 .tab-bar { padding: 0 12px; gap: 16px; }
+  body.lingxi-graphite-v1 .chat-stream { padding-left: 12px; padding-right: 12px; }
+  body.lingxi-graphite-v1 .chat-input-box,
+  body.lingxi-graphite-v1 .revise-mode-bar,
+  body.lingxi-graphite-v1 .doc-lock-banner,
+  body.lingxi-graphite-v1 .chat-progress,
+  body.lingxi-graphite-v1 .chat-pending,
+  body.lingxi-graphite-v1 .skill-suggest-bar,
+  body.lingxi-graphite-v1 .chat-model-override-bar,
+  body.lingxi-graphite-v1 .chat-attachments,
+  body.lingxi-graphite-v1 .chat-context-actions { margin-left: 10px; margin-right: 10px; }
+  body.lingxi-graphite-v1 .lg-thinking-control { max-width: 70px; padding-left: 5px; padding-right: 5px; }
+  body.lingxi-graphite-v1 .model-select-wrap.lg-composer-model { min-width: 112px; max-width: min(200px, calc(100vw - 130px)); }
+  body.lingxi-graphite-v1 .chat-input-toolbar { gap: 2px; padding-left: 5px; padding-right: 5px; }
+  body.lingxi-graphite-v1 .lg-context-ring { margin-left: 2px; margin-right: 2px; }
+}
+
+/* Prompt presets — repurposes the redundant per-turn model override control. */
+body.lingxi-graphite-v1.lingxi-prompt-presets-v1 .chat-model-override-bar { display: none !important; }
+body.lingxi-graphite-v1 .lg-prompt-preset-button[aria-expanded="true"],
+body.lingxi-graphite-v1 .lg-prompt-preset-button.lingxi-prompt-has-active { background: var(--lg-bg-hover); color: var(--lg-text); }
+body.lingxi-graphite-v1 .lingxi-prompt-button-icon {
+  width: 17px;
+  height: 17px;
+  padding: 3px;
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: space-between;
+  border: 1.5px solid currentColor;
+  border-radius: 4px;
+}
+body.lingxi-graphite-v1 .lingxi-prompt-button-icon span {
+  display: block;
+  width: 100%;
+  height: 1.5px;
+  border-radius: 1px;
+  background: currentColor;
+}
+body.lingxi-graphite-v1 .lingxi-prompt-preset-picker {
+  z-index: 1300;
+  width: min(360px, calc(100vw - 16px));
+  min-width: min(280px, calc(100vw - 16px));
+  max-height: min(520px, calc(100vh - 96px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--lg-border);
+  border-radius: 8px;
+  background: var(--lg-bg-elevated);
+  color: var(--lg-text);
+  box-shadow: var(--lg-shadow-float);
+  animation: lg-menu-in 160ms ease;
+}
+body.lingxi-graphite-v1 .lingxi-prompt-picker-header {
+  min-height: 42px;
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-bottom: 1px solid var(--lg-divider);
+}
+body.lingxi-graphite-v1 .lingxi-prompt-picker-title { font-size: 14px; line-height: 22px; font-weight: 600; }
+body.lingxi-graphite-v1 .lingxi-prompt-picker-count { font-size: 12px; line-height: 18px; color: var(--lg-text-secondary); }
+body.lingxi-graphite-v1 .lingxi-prompt-picker-list { min-height: 60px; overflow: auto; padding: 5px; }
+body.lingxi-graphite-v1 .lingxi-prompt-picker-empty { padding: 18px 12px; color: var(--lg-text-secondary); font-size: 12px; line-height: 18px; text-align: center; }
+body.lingxi-graphite-v1 .lingxi-prompt-picker-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+  gap: 2px;
+  border-radius: 6px;
+}
+body.lingxi-graphite-v1 .lingxi-prompt-picker-row + .lingxi-prompt-picker-row { margin-top: 2px; }
+body.lingxi-graphite-v1 .lingxi-prompt-picker-row:hover,
+body.lingxi-graphite-v1 .lingxi-prompt-picker-row.is-active { background: var(--lg-bg-hover); }
+/* Active preset uses the row surface; no extra decorative marker. */
+body.lingxi-graphite-v1 .lingxi-prompt-picker-use,
+body.lingxi-graphite-v1 .lingxi-prompt-picker-edit,
+body.lingxi-graphite-v1 .lingxi-prompt-picker-action,
+body.lingxi-graphite-v1 .lingxi-prompt-btn,
+body.lingxi-graphite-v1 .lingxi-prompt-modal-close {
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--lg-text);
+  font: inherit;
+  cursor: pointer;
+}
+body.lingxi-graphite-v1 .lingxi-prompt-picker-use {
+  min-width: 0;
+  padding: 7px 8px;
+  display: block;
+  text-align: left;
+}
+body.lingxi-graphite-v1 .lingxi-prompt-picker-name {
+  overflow: hidden;
+  color: var(--lg-text);
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+body.lingxi-graphite-v1 .lingxi-prompt-picker-preview {
+  margin-top: 1px;
+  overflow: hidden;
+  color: var(--lg-text-secondary);
+  font-size: 12px;
+  line-height: 18px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+body.lingxi-graphite-v1 .lingxi-prompt-picker-edit {
+  align-self: center;
+  height: 30px;
+  margin-right: 3px;
+  padding: 0 8px;
+  color: var(--lg-text-secondary);
+  font-size: 12px;
+}
+body.lingxi-graphite-v1 .lingxi-prompt-picker-edit:hover { background: var(--lg-bg-active); color: var(--lg-text); }
+body.lingxi-graphite-v1 .lingxi-prompt-picker-footer {
+  padding: 6px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  border-top: 1px solid var(--lg-divider);
+}
+body.lingxi-graphite-v1 .lingxi-prompt-picker-action {
+  min-width: 0;
+  min-height: 32px;
+  padding: 5px 8px;
+  background: var(--lg-bg-subtle);
+  color: var(--lg-text-secondary);
+  font-size: 12px;
+  line-height: 18px;
+}
+body.lingxi-graphite-v1 .lingxi-prompt-picker-action:hover { background: var(--lg-bg-hover); color: var(--lg-text); }
+body.lingxi-graphite-v1 .lingxi-prompt-picker-action.wide { grid-column: 1 / -1; }
+body.lingxi-graphite-v1 .lingxi-prompt-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1600;
+  padding: 10px;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.28);
+}
+body.lingxi-graphite-v1 .lingxi-prompt-modal {
+  width: min(520px, 100%);
+  max-height: calc(100vh - 20px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--lg-border);
+  border-radius: 8px;
+  background: var(--lg-bg-elevated);
+  color: var(--lg-text);
+  box-shadow: var(--lg-shadow-float);
+}
+body.lingxi-graphite-v1 .lingxi-prompt-modal-header {
+  min-height: 58px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--lg-divider);
+}
+body.lingxi-graphite-v1 .lingxi-prompt-modal-heading { min-width: 0; }
+body.lingxi-graphite-v1 .lingxi-prompt-modal-title { font-size: 15px; line-height: 22px; font-weight: 600; }
+body.lingxi-graphite-v1 .lingxi-prompt-modal-subtitle { margin-top: 2px; color: var(--lg-text-secondary); font-size: 12px; line-height: 18px; }
+body.lingxi-graphite-v1 .lingxi-prompt-modal-close { width: 30px; height: 30px; flex: 0 0 30px; color: var(--lg-text-secondary); font-size: 20px; line-height: 1; }
+body.lingxi-graphite-v1 .lingxi-prompt-modal-close:hover { background: var(--lg-bg-hover); color: var(--lg-text); }
+body.lingxi-graphite-v1 .lingxi-prompt-modal-body { padding: 12px; overflow: auto; }
+body.lingxi-graphite-v1 .lingxi-prompt-field { display: block; }
+body.lingxi-graphite-v1 .lingxi-prompt-field + .lingxi-prompt-field { margin-top: 12px; }
+body.lingxi-graphite-v1 .lingxi-prompt-field-label { margin-bottom: 5px; color: var(--lg-text); font-size: 12px; line-height: 18px; font-weight: 600; }
+body.lingxi-graphite-v1 .lingxi-prompt-field-hint { margin: -3px 0 5px; color: var(--lg-text-secondary); font-size: 12px; line-height: 18px; }
+body.lingxi-graphite-v1 .lingxi-prompt-field input,
+body.lingxi-graphite-v1 .lingxi-prompt-field textarea {
+  box-sizing: border-box;
+  width: 100%;
+  border: 1px solid var(--lg-border);
+  border-radius: 6px;
+  background: var(--lg-bg-container);
+  color: var(--lg-text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 20px;
+}
+body.lingxi-graphite-v1 .lingxi-prompt-field input { height: 34px; padding: 6px 9px; }
+body.lingxi-graphite-v1 .lingxi-prompt-field textarea { min-height: 92px; padding: 8px 9px; resize: vertical; }
+body.lingxi-graphite-v1 .lingxi-prompt-field input:focus,
+body.lingxi-graphite-v1 .lingxi-prompt-field textarea:focus { border-color: var(--lg-text-tertiary); outline: 2px solid var(--lg-bg-active); outline-offset: 0; }
+body.lingxi-graphite-v1 .lingxi-prompt-modal-footer {
+  min-height: 52px;
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-top: 1px solid var(--lg-divider);
+}
+body.lingxi-graphite-v1 .lingxi-prompt-modal-secondary,
+body.lingxi-graphite-v1 .lingxi-prompt-modal-actions { display: flex; align-items: center; gap: 5px; }
+body.lingxi-graphite-v1 .lingxi-prompt-btn { min-height: 32px; padding: 5px 11px; font-size: 12px; line-height: 18px; }
+body.lingxi-graphite-v1 .lingxi-prompt-btn.ghost { background: var(--lg-bg-subtle); color: var(--lg-text-secondary); }
+body.lingxi-graphite-v1 .lingxi-prompt-btn.ghost:hover { background: var(--lg-bg-hover); color: var(--lg-text); }
+body.lingxi-graphite-v1 .lingxi-prompt-btn.primary { background: var(--lg-primary); color: var(--lg-primary-on); }
+body.lingxi-graphite-v1 .lingxi-prompt-btn.primary:hover { background: var(--lg-primary-hover); }
+body.lingxi-graphite-v1 .lingxi-prompt-btn.danger { color: var(--lg-error); }
+body.lingxi-graphite-v1 .lingxi-prompt-btn.danger:hover { background: var(--lg-bg-hover); }
+body.lingxi-graphite-v1 .lingxi-prompt-toast {
+  position: fixed;
+  z-index: 1700;
+  right: 12px;
+  bottom: 92px;
+  max-width: calc(100vw - 24px);
+  padding: 7px 10px;
+  border: 1px solid var(--lg-border);
+  border-radius: 6px;
+  background: var(--lg-bg-elevated);
+  color: var(--lg-text);
+  box-shadow: var(--lg-shadow-float);
+  font-size: 12px;
+  line-height: 18px;
+  opacity: 0;
+  transform: translateY(4px);
+  pointer-events: none;
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+body.lingxi-graphite-v1 .lingxi-prompt-toast.is-visible { opacity: 1; transform: translateY(0); }
+
+@media (max-width: 420px) {
+  body.lingxi-graphite-v1 .lingxi-prompt-modal-overlay { padding: 8px; }
+  body.lingxi-graphite-v1 .lingxi-prompt-modal { max-height: calc(100vh - 16px); }
+  body.lingxi-graphite-v1 .lingxi-prompt-modal-footer { align-items: stretch; flex-direction: column-reverse; }
+  body.lingxi-graphite-v1 .lingxi-prompt-modal-secondary,
+  body.lingxi-graphite-v1 .lingxi-prompt-modal-actions { width: 100%; }
+  body.lingxi-graphite-v1 .lingxi-prompt-modal-actions .lingxi-prompt-btn { flex: 1 1 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body.lingxi-graphite-v1 *,
+  body.lingxi-graphite-v1 *::before,
+  body.lingxi-graphite-v1 *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
+
+/* LiteLLM 模型目录：仅服务配置面板使用，窄窗下避免横向溢出。 */
+body.lingxi-graphite-v1 .lg-litellm-manager { margin-top: 12px; }
+body.lingxi-graphite-v1 .lg-litellm-manager > summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; cursor: pointer; list-style: none; }
+body.lingxi-graphite-v1 .lg-litellm-manager > summary::-webkit-details-marker { display: none; }
+body.lingxi-graphite-v1 .lg-litellm-manager > summary small { display: block; margin-top: 2px; color: var(--muted); font-size: 12px; font-weight: 400; }
+body.lingxi-graphite-v1 .lg-litellm-manager-content { padding-top: 10px; }
+body.lingxi-graphite-v1 .lg-litellm-actions { display: flex; gap: 8px; align-items: center; margin: 10px 0; }
+body.lingxi-graphite-v1 .lg-litellm-actions input { min-width: 0; flex: 1 1 auto; }
+body.lingxi-graphite-v1 .lg-litellm-models { display: grid; gap: 6px; max-height: 310px; overflow: auto; }
+body.lingxi-graphite-v1 .lg-litellm-model-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 8px; padding: 8px; border: 1px solid var(--lg-border); border-radius: 7px; background: var(--lg-bg-elevated); }
+body.lingxi-graphite-v1 .lg-litellm-model-info { min-width: 0; }
+body.lingxi-graphite-v1 .lg-litellm-model-id { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; }
+body.lingxi-graphite-v1 .lg-litellm-model-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; color: var(--muted); font-size: 11px; }
+body.lingxi-graphite-v1 .lg-litellm-model-state { color: var(--muted); font-size: 11px; white-space: nowrap; }
+body.lingxi-graphite-v1 .lg-litellm-model-row input { width: 16px; height: 16px; margin: 0; accent-color: var(--primary); }
+body.lingxi-graphite-v1 .lg-litellm-error { margin: 8px 0; color: var(--danger, #bf3f3f); font-size: 12px; }
+body.lingxi-graphite-v1 .lg-litellm-empty { padding: 10px; color: var(--muted); font-size: 12px; }
+body.lingxi-graphite-v1 .lg-model-hidden-by-user { display: none !important; }
+@media (max-width: 420px) { body.lingxi-graphite-v1 .lg-litellm-actions { align-items: stretch; flex-direction: column; } }
+
+/* Provider 已拉取模型管理 */
+body.lingxi-graphite-v1 .lg-provider-model-manager { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--lg-border); }
+body.lingxi-graphite-v1 .lg-provider-model-manager > summary { cursor: pointer; font-size: 12px; font-weight: 600; }
+body.lingxi-graphite-v1 .lg-provider-model-actions { display: flex; margin: 8px 0; }
+body.lingxi-graphite-v1 .lg-provider-model-list { display: grid; gap: 5px; max-height: 220px; overflow: auto; }
+body.lingxi-graphite-v1 .lg-provider-model-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px; align-items: center; padding: 6px 0; border-top: 1px solid color-mix(in srgb, var(--lg-border) 65%, transparent); }
+body.lingxi-graphite-v1 .lg-provider-model-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+body.lingxi-graphite-v1 .lg-provider-model-empty { color: var(--muted); font-size: 12px; }
+
+/* 独立 ?mode=settings 服务配置窗口：只装载模型管理，不启用主 TaskPane 重排。 */
+body.lingxi-service-manager-v1 .lg-provider-model-manager,
+body.lingxi-service-manager-v1 .lg-litellm-manager { margin-top: 12px; padding: 10px; border: 1px solid var(--border, #d9dce3); border-radius: 8px; background: var(--panel, #fff); }
+body.lingxi-service-manager-v1 .lg-provider-model-manager > summary,
+body.lingxi-service-manager-v1 .lg-litellm-manager > summary { cursor: pointer; font-size: 13px; font-weight: 600; }
+body.lingxi-service-manager-v1 .lg-provider-model-actions,
+body.lingxi-service-manager-v1 .lg-litellm-actions { display: flex; gap: 8px; align-items: center; margin: 9px 0; }
+body.lingxi-service-manager-v1 .lg-litellm-actions input { min-width: 0; flex: 1; }
+body.lingxi-service-manager-v1 .lg-provider-model-list,
+body.lingxi-service-manager-v1 .lg-litellm-models { display: grid; gap: 6px; max-height: 260px; overflow: auto; }
+body.lingxi-service-manager-v1 .lg-provider-model-row,
+body.lingxi-service-manager-v1 .lg-litellm-model-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 8px; padding: 7px; border: 1px solid var(--border, #e4e7ed); border-radius: 6px; }
+body.lingxi-service-manager-v1 .lg-provider-model-name,
+body.lingxi-service-manager-v1 .lg-litellm-model-id,
+body.lingxi-service-manager-v1 .lg-litellm-model-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+body.lingxi-service-manager-v1 .lg-litellm-model-meta,
+body.lingxi-service-manager-v1 .lg-provider-model-empty,
+body.lingxi-service-manager-v1 .lg-litellm-empty { color: var(--muted, #7b8494); font-size: 12px; }
+body.lingxi-service-manager-v1 .lg-litellm-model-info { min-width: 0; }
+body.lingxi-service-manager-v1 .lg-litellm-model-row input { width: 16px; height: 16px; }
+body.lingxi-service-manager-v1 .lg-model-hidden-by-user { display: none !important; }
+
+/* Codex OAuth is host-owned by Codex CLI; TaskPane never receives a token. */
+.lg-codex-direct-bridge { border-color: color-mix(in srgb, var(--accent, #2f6feb) 38%, var(--border, #d9dce3)); }
+.lg-codex-direct-bridge .chat-provider-card-head p,
+.lg-codex-auth-help { margin: 4px 0 0; color: var(--muted, #697386); font-size: 12px; line-height: 1.45; }
+.lg-codex-auth-status { margin: 10px 0 6px; font-size: 12px; color: var(--text, #1f2937); }
+.lg-codex-litellm-bridge .lg-provider-model-actions { gap: 8px; flex-wrap: wrap; }
+#chatProvidersList .chat-provider-card[hidden] { display: none !important; }
+
+/* Agent references: one-turn, explicit supplementary context. */
+body.lingxi-graphite-v1 .lingxi-agent-reference-tray {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 10px 0;
+}
+body.lingxi-graphite-v1 .lingxi-agent-reference-chip {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  height: 26px;
+  gap: 5px;
+  padding: 0 5px 0 7px;
+  border: 1px solid var(--lg-border);
+  border-radius: 6px;
+  background: var(--lg-bg-subtle);
+  color: var(--lg-text-secondary);
+  font-size: 12px;
+}
+body.lingxi-graphite-v1 .lingxi-agent-reference-kind { color: var(--lg-text); font-weight: 600; white-space: nowrap; }
+body.lingxi-graphite-v1 .lingxi-agent-reference-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+body.lingxi-graphite-v1 .lingxi-agent-reference-meta { color: var(--lg-text-tertiary); white-space: nowrap; }
+body.lingxi-graphite-v1 .lingxi-agent-reference-remove {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--lg-text-secondary);
+  font-size: 16px;
+  line-height: 18px;
+}
+body.lingxi-graphite-v1 .lingxi-agent-reference-remove:hover { background: var(--lg-bg-active); color: var(--lg-text); }
+body.lingxi-graphite-v1 .lingxi-agent-reference-notice { flex-basis: 100%; margin: 1px 0 0; color: var(--lg-text-tertiary); font-size: 12px; line-height: 1.4; }
+body.lingxi-graphite-v1 .lingxi-agent-reference-tray[data-tone="warning"] .lingxi-agent-reference-notice { color: var(--lg-warning); }
+body.lingxi-graphite-v1 .lingxi-agent-reference-tray[data-tone="error"] .lingxi-agent-reference-notice { color: var(--lg-error); }
+body.lingxi-graphite-v1 .lingxi-agent-reference-tray.is-loading::before { content: "@文档"; color: var(--lg-text-tertiary); font-size: 12px; }
+body.lingxi-graphite-v1 .lingxi-agent-reference-menu {
+  position: fixed;
+  z-index: 120;
+  display: grid;
+  min-width: 184px;
+  padding: 4px;
+  border: 1px solid var(--lg-border);
+  border-radius: 8px;
+  background: var(--lg-bg-elevated);
+  box-shadow: var(--lg-shadow-float);
+}
+body.lingxi-graphite-v1 .lingxi-agent-reference-menu button {
+  min-height: 32px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--lg-text);
+  text-align: left;
+  font-size: 13px;
+}
+body.lingxi-graphite-v1 .lingxi-agent-reference-menu button:hover,
+body.lingxi-graphite-v1 .lingxi-agent-reference-menu button:focus-visible { background: var(--lg-bg-hover); }
+
+@media (max-width: 420px) {
+  body.lingxi-graphite-v1 .lingxi-agent-reference-chip { max-width: calc(100vw - 44px); }
+}
+
+/* Chat paragraph anchors: user-triggered view navigation only. */
+body.lingxi-graphite-v1 .lingxi-chat-anchor-link {
+  display: inline;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px dotted currentColor;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  line-height: inherit;
+}
+body.lingxi-graphite-v1 .lingxi-chat-anchor-link:hover { color: var(--lg-primary); border-bottom-style: solid; }
+body.lingxi-graphite-v1 .lingxi-chat-anchor-link:disabled { cursor: wait; opacity: .55; }
+body.lingxi-graphite-v1 .lingxi-chat-anchor-feedback {
+  position: fixed;
+  z-index: 140;
+  right: 12px;
+  bottom: 12px;
+  max-width: min(300px, calc(100vw - 24px));
+  padding: 7px 10px;
+  border: 1px solid var(--lg-border);
+  border-radius: 6px;
+  background: var(--lg-bg-elevated);
+  color: var(--lg-text);
+  box-shadow: var(--lg-shadow-float);
+  font-size: 12px;
+}
+body.lingxi-graphite-v1 .lingxi-chat-anchor-feedback[data-tone="error"] { color: var(--lg-error); }
+
+/* Copy feedback hint: transient confirmation that Cmd+C reached the page and mirrored to the system clipboard. */
+body.lingxi-graphite-v1 .lingxi-copy-hint {
+  position: fixed;
+  z-index: 150;
+  right: 12px;
+  bottom: 12px;
+  max-width: min(300px, calc(100vw - 24px));
+  padding: 7px 10px;
+  border: 1px solid var(--lg-border);
+  border-radius: 6px;
+  background: var(--lg-bg-elevated);
+  color: var(--lg-text);
+  box-shadow: var(--lg-shadow-float);
+  font-size: 12px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .16s ease;
+}
+body.lingxi-graphite-v1 .lingxi-copy-hint.visible { opacity: 1; }
+body.lingxi-graphite-v1 .lingxi-copy-hint.lingxi-copy-hint-error { color: var(--lg-error); }
+
+/* Floating copy button: mouse-path copy for chat selections (Cmd+C is consumed by the WPS native menu). */
+body.lingxi-graphite-v1 .lingxi-floating-copy-btn {
+  position: fixed;
+  z-index: 160;
+  padding: 4px 12px;
+  border: 1px solid var(--lg-border);
+  border-radius: 6px;
+  background: var(--lg-bg-elevated);
+  color: var(--lg-text);
+  box-shadow: var(--lg-shadow-float);
+  font-size: 12px;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .12s ease;
+}
+body.lingxi-graphite-v1 .lingxi-floating-copy-btn.visible { opacity: 1; pointer-events: auto; }
+body.lingxi-graphite-v1 .lingxi-floating-copy-btn:hover { color: var(--lg-primary); border-color: var(--lg-primary); }
+
+/* Rich input surface: transparent textarea text over a styled backdrop (LINGXI_RICH_INPUT_SURFACE_V1). */
+body.lingxi-graphite-v1 .lri-wrap { position: relative; width: 100%; }
+body.lingxi-graphite-v1 .lri-backdrop {
+  position: absolute;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  color: var(--lg-text);
+  border: 0 solid transparent;
+}
+body.lingxi-graphite-v1 .lri-wrap > textarea.lri-active {
+  position: relative;
+  z-index: 1;
+  background: transparent;
+  color: transparent !important;
+  -webkit-text-fill-color: transparent !important;
+  text-shadow: none !important;
+  caret-color: var(--lg-primary) !important;
+}
+body.lingxi-graphite-v1 .lri-wrap > textarea.lri-active::placeholder {
+  color: var(--lg-text-tertiary) !important;
+  -webkit-text-fill-color: var(--lg-text-tertiary) !important;
+}
+body.lingxi-graphite-v1 .lri-wrap > textarea.lri-active::selection { background: rgba(76, 139, 245, .28); color: transparent; -webkit-text-fill-color: transparent; }
+body.lingxi-graphite-v1 .lri-wrap.lri-composing .lri-backdrop { visibility: hidden; }
+body.lingxi-graphite-v1 .lri-wrap.lri-composing > textarea.lri-active {
+  color: var(--lg-text) !important;
+  -webkit-text-fill-color: var(--lg-text) !important;
+}
+body.lingxi-graphite-v1 .lri-line { display: inline; }
+body.lingxi-graphite-v1 .lri-section { color: var(--lg-primary); font-weight: 600; }
+body.lingxi-graphite-v1 .lri-heading { font-weight: 700; }
+body.lingxi-graphite-v1 .lri-num { color: var(--lg-primary); font-weight: 600; }
+body.lingxi-graphite-v1 .lri-bold { font-weight: 700; }
+body.lingxi-graphite-v1 .lri-mark { background: rgba(250, 204, 21, .38); color: inherit; border-radius: 2px; }
+body.lingxi-graphite-v1 .lri-anchor { color: #2f9e44; font-weight: 600; border-bottom: 1px dotted #2f9e44; }
+body.lingxi-graphite-v1 .lri-toolbar { display: flex; gap: 4px; margin: 2px 0 4px; }
+body.lingxi-graphite-v1 .lri-tool {
+  min-width: 26px;
+  padding: 2px 7px;
+  border: 1px solid var(--lg-border);
+  border-radius: 5px;
+  background: var(--lg-bg-elevated);
+  color: var(--lg-text);
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
+}
+body.lingxi-graphite-v1 .lri-tool:hover { color: var(--lg-primary); border-color: var(--lg-primary); }

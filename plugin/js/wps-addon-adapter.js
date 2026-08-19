@@ -761,11 +761,7 @@
             }
           }
           pane.Visible = wantShow;
-          // 每次"显示"时把默认宽度重新写一遍 —— dev 改 pickDefaultTaskPaneWidth 后立刻
-          // 生效；生产用户手动 resize 后下次开会被重置，但开发体验优先。
-          if (wantShow) {
-            try { applyTaskPaneWidth(pane, pickDefaultTaskPaneWidth(), "toggle-reshow"); } catch (e) {}
-          }
+          // 不重写 Width：保留用户通过 WPS 原生分隔条调整后的宽度。
           traceStatic("adapter.toggleTaskPane.reuse", `${existingId || ""}:${wantShow}`);
           debugLog("toggleTaskPane.reuse", {
             existingId,
@@ -805,8 +801,7 @@
           }
         } catch (e) {}
 
-        // 设置一次初始宽度即可，去掉延迟覆盖等花式操作，避免干扰原生渲染
-        applyTaskPaneWidth(pane, pickDefaultTaskPaneWidth(), "creation");
+        // 与 Sally 一致，不设置 Width；让 WPS 决定初始宽度并管理原生分隔条。
         
         pane.Visible = true;
         traceStatic("adapter.toggleTaskPane.created", pane.ID != null ? String(pane.ID) : "no-id");
@@ -1099,26 +1094,17 @@
     return handleAddinLoad(ribbonUI);
   };
 
-  // 主面板入口是否改用独立 ShowDialog 浮窗（而非 docked taskpane）：只在能确认是 mac/linux 时才改；
-  // Windows 或识别不出时保持 docked（现状）——避免回归 Windows 上工作正常的停靠面板。
-  function preferDialogPaneForHost() {
-    try {
-      const nav = global.navigator || (typeof navigator !== "undefined" ? navigator : null);
-      const s = String((nav && nav.userAgent) || "") + " " + String((nav && nav.platform) || "");
-      if (/Windows|Win32|Win64|WOW64/i.test(s)) return false;
-      return /Mac|Macintosh|Mac OS X|Darwin|Linux|X11|CrOS/i.test(s);
-    } catch (e) { return false; }
-  }
+  // LINGXI_SALLY_NATIVE_TASKPANE_V1
+  // 主聊天与 Sally 一致：所有桌面宿主优先使用 WPS 原生 CreateTaskPane。
+  // ShowDialog 仅保留为 CreateTaskPane 真失败时的安全回退，不再作为 macOS 主布局。
 
   function handleRibbonAction(control) {
     const id = getRibbonControlId(control);
     traceStatic("adapter.OnAction", id);
     debugLog("OnAction", { id, controlType: typeof control });
     if (id === "openWpsAiPane") {
-      // Mac/Linux 上 docked taskpane 与文档共享 OS 键盘焦点，Cmd+V 会同时进文档造成双份插入，而 jsapi
-      // 没有 ReleaseFocus 可补救（Windows 特有）。这两端改用独立 ShowDialog 浮窗（配合输入框「粘贴」按钮/
-      // 右键粘贴走程序化剪贴板绕开 Cmd+V）。Windows 上 docked taskpane 工作正常、可停靠右侧，保持不变。
-      if (preferDialogPaneForHost()) return openTaskPaneAsDialog();
+      // Sally 同款：原生右侧 TaskPane 的分隔条负责用户缩放；不再走固定尺寸 ShowDialog。
+      debugLog("openWpsAiPane.native-taskpane", { layout: "sally" });
       return toggleTaskPane();
     }
 
@@ -1298,11 +1284,7 @@
       taskPaneHost: taskPaneHost === app ? "app" : (taskPaneHost === global.wps ? "wps" : typeof taskPaneHost),
       host: detectHostByApp(app)
     });
-    if (preferDialogPaneForHost()) {
-      traceStatic("adapter.ensureTaskPaneVisible.prefer-dialog", url);
-      debugLog("ensureTaskPaneVisible.prefer-dialog", { url });
-      return openTaskPaneAsDialogWithApp(app);
-    }
+    // Sally 同款：ribbon 辅助动作同样优先确保原生 TaskPane 可见。
     if (taskPaneHost) {
       const storageHost = app || taskPaneHost;
       const existingId = readStorageItem(storageHost, TASKPANE_STORAGE_KEY);
@@ -1311,8 +1293,7 @@
           const pane = getTaskPaneById(taskPaneHost, existingId);
           if (pane) {
             if (!pane.Visible) pane.Visible = true;
-            // ribbon 触发的 ensureTaskPaneVisible 也重新写默认宽度（同 toggleTaskPane 的考量）
-            try { applyTaskPaneWidth(pane, pickDefaultTaskPaneWidth(), "ribbon-reshow"); } catch (e) {}
+            // 不重写 Width：保留用户拖动后的原生侧栏宽度。
             traceStatic("adapter.ensureTaskPaneVisible.reuse", existingId);
             debugLog("ensureTaskPaneVisible.reuse", {
               existingId,
@@ -1335,7 +1316,7 @@
              pane.DockPosition = 2; 
           }
         } catch (e) {}
-        applyTaskPaneWidth(pane, pickDefaultTaskPaneWidth(), "ribbon-creation");
+        // 与 Sally 一致，首次创建也不强制 Width。
         pane.Visible = true;
         traceStatic("adapter.ensureTaskPaneVisible.created", pane?.ID != null ? String(pane.ID) : "no-id");
         debugLog("ensureTaskPaneVisible.created", {

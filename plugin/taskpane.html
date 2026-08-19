@@ -6,6 +6,9 @@
     <title>灵犀AI</title>
     <link rel="stylesheet" href="./js/vendor/ant-design-vue/reset.css" />
     <link rel="stylesheet" href="./css/style.css" />
+    <!-- LINGXI_GRAPHITE_TASKPANE_V1_CSS_START -->
+    <link rel="stylesheet" href="./css/lingxi-graphite-taskpane.css" />
+    <!-- LINGXI_GRAPHITE_TASKPANE_V1_CSS_END -->
     <script>
       // 早期检测：?mode=settings / preview / stylepreset / materials / quickprompt / formatpreview / selectionpreview 时给 body 加对应 class，CSS 提前隐藏 TaskPane 主 UI
       (function () {
@@ -380,7 +383,6 @@
                   <small class="field-tip">一次对话允许 AI 连续调用工具的最多次数（默认 150）。复杂任务如「AI 生成 10 页 PPT」可能需要 80-150；过低会中途报错"达到上限"。</small>
                 </label>
 
-
                 <label class="field">
                   <span class="field-row-head">
                     系统提示词
@@ -702,7 +704,6 @@
                     <div id="cacheGroupsList" class="cache-groups"></div>
                   </div>
                 </div>
-
 
                 <!-- 开发者工具：仅 dev 模式（127.0.0.1/localhost/wpsjs debug 端口）显示，JS 自动检测 -->
                 <div data-subtab-panel="about-dev" class="settings-subtab-panel hidden" role="tabpanel">
@@ -1884,5 +1885,9 @@
         document.write('<script src="./main.js' + (dev ? '?v=' + Date.now() : '') + '"><\/script>');
       })();
     </script>
+    <!-- LINGXI_GRAPHITE_TASKPANE_V1_JS_START -->
+    <script src="./js/lingxi-agent-references.js"></script>
+    <script src="./js/lingxi-graphite-taskpane.js"></script>
+    <!-- LINGXI_GRAPHITE_TASKPANE_V1_JS_END -->
   </body>
 </html>

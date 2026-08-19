@@ -358,6 +358,23 @@
     return planning && needsTool;
   }
 
+  function buildToolContinuationPrompt(toolSpecs) {
+    const available = new Set((toolSpecs || []).map((tool) => String(tool?.function?.name || "")).filter(Boolean));
+    const profiles = [
+      { prefix: "wps_", label: "WPS 文字", preferred: ["wps_write_table_range", "wps_insert_text", "wps_replace_selection", "wps_format_paragraph"] },
+      { prefix: "et_", label: "WPS 表格", preferred: ["et_write_range", "et_format_range", "et_set_autofilter", "et_autofit"] },
+      { prefix: "wpp_", label: "WPS 演示", preferred: ["wpp_replace_shape_text", "wpp_add_slide", "wpp_add_text_box", "wpp_apply_theme"] },
+      { prefix: "pdf_", label: "WPS PDF", preferred: [] }
+    ];
+    const profile = profiles.find((entry) => Array.from(available).some((name) => name.startsWith(entry.prefix)));
+    const examples = profile ? profile.preferred.filter((name) => available.has(name)).slice(0, 4) : [];
+    const hostLabel = profile?.label || "当前宿主";
+    if (examples.length) {
+      return `你刚才只说明了计划，还没有实际完成。当前宿主是 ${hostLabel}；请继续执行，并且只调用本轮工具清单中确实存在的同宿主工具（例如 ${examples.join("、")}），不要只回复计划文字，也不要提及其他宿主的工具。`;
+    }
+    return `你刚才只说明了计划，还没有实际完成。当前宿主是 ${hostLabel}。请只使用本轮工具清单中确实存在的同宿主工具继续执行；如果当前轮没有可用的写入工具，请直接说明限制，不要虚构、探测或提及其他宿主的工具。`;
+  }
+
   function textFromMessages(messages) {
     return (messages || []).map((msg) => {
       const c = msg?.content;
@@ -773,7 +790,7 @@
               });
               conversation.push({
                 role: "user",
-                content: "你刚才只说明了计划，还没有实际完成。请现在继续执行：需要修改当前 WPS 表格/文档时，必须调用相应工具（例如 et_write_range、et_format_range、et_set_autofilter、et_autofit 等），不要只回复计划文字。"
+                content: buildToolContinuationPrompt(toolSpecs)
               });
               awaitingToolFollowup = wasAwaitingToolFollowup;
               continue;

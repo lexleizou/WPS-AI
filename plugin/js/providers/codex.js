@@ -1,43 +1,22 @@
 (function attachCodexProvider(global) {
   "use strict";
 
-  const JWT_CLAIM_PATH = "https://api.openai.com/auth";
-  // 端口随 WpsAiRuntime 实际探测结果走。每次调用都现拼，不缓存。
+  // 凭据只由本机 Codex CLI owner 保存。WebView 不保存、刷新或读取 OAuth token；
+  // localhost proxy 以当前官方 Codex CLI 版本与登录态直接请求 OpenAI ChatGPT backend。
   function proxyBase() { return global.WpsAiRuntime?.proxyBase?.() || "http://127.0.0.1:3890"; }
-  function modelsEndpoint() { return `${proxyBase()}/codex/models?client_version=0.0.1`; }
-  function responsesEndpoint() { return `${proxyBase()}/codex/responses?client_version=0.0.1`; }
-
-  function decodeJwtPayload(token) {
-    const payload = token.split(".")[1];
-    if (!payload) {
-      throw new Error("Token 格式异常，无法解析 ChatGPT 账户信息。");
-    }
-    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
-    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
-    return JSON.parse(decodeURIComponent(escape(atob(padded))));
-  }
+  function modelsEndpoint() { return `${proxyBase()}/codex/models`; }
+  function responsesEndpoint() { return `${proxyBase()}/codex/responses`; }
 
   async function buildHeaders({ stream = false } = {}) {
-    const token = await global.WpsAiAuth.refreshTokenIfNeeded();
-    if (!token) {
-      throw new Error("请先使用 ChatGPT OAuth 登录。");
-    }
-    const payload = decodeJwtPayload(token);
-    const accountId = payload?.[JWT_CLAIM_PATH]?.chatgpt_account_id;
-    if (!accountId) {
-      throw new Error("Token 中缺少 chatgpt_account_id，无法调用 Codex 接口。");
-    }
-    const headers = {
-      Authorization: `Bearer ${token}`,
-      "chatgpt-account-id": accountId,
-      originator: "codex_cli_rs",
-      "OpenAI-Beta": "responses=experimental",
-      "Content-Type": "application/json"
-    };
-    if (stream) {
-      headers.Accept = "text/event-stream";
-    }
+    const headers = { "Content-Type": "application/json" };
+    if (stream) headers.Accept = "text/event-stream";
     return headers;
+  }
+
+  async function ensureCodexCliReady() {
+    const response = await fetch(`${proxyBase()}/service/codex-oauth/status`);
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.cliAuthenticated) throw new Error(payload.error || "请先使用本机 Codex CLI 完成 ChatGPT OAuth 登录。");
   }
 
   function splitMessages(messages) {
@@ -55,13 +34,18 @@
   //   { type:'image_url', image_url:{url}}                                → { type:'input_image', image_url }
   //   { type:'file', file:{file_data:"data:application/pdf;base64,...", filename}} → { type:'input_file', file_data, filename }
   //   { type:'file', file:{file_id}}                                      → { type:'input_file', file_id }
-  function normalizeCodexContent(content) {
-    if (content == null) return [{ type: "input_text", text: "" }];
-    if (typeof content === "string") return [{ type: "input_text", text: content }];
-    if (!Array.isArray(content)) return [{ type: "input_text", text: String(content) }];
+  function normalizeCodexContent(content, role = "user") {
+    // Codex 的 Responses backend 对历史 assistant item 只接受 output_text/refusal；
+    // input_text 只能用于 user/developer/system 输入。
+    const textType = role === "assistant" ? "output_text" : "input_text";
+    if (content == null) return [{ type: textType, text: "" }];
+    if (typeof content === "string") return [{ type: textType, text: content }];
+    if (!Array.isArray(content)) return [{ type: textType, text: String(content) }];
     return content.map((part) => {
-      if (!part || typeof part !== "object") return { type: "input_text", text: String(part) };
-      if (part.type === "text") return { type: "input_text", text: part.text || "" };
+      if (!part || typeof part !== "object") return { type: textType, text: String(part) };
+      if (part.type === "text") return { type: textType, text: part.text || "" };
+      // 已有历史可能以 input_text 留存；按当前消息 role 重新正规化。
+      if (part.type === "input_text" || part.type === "output_text") return { type: textType, text: part.text || "" };
       if (part.type === "image_url" && part.image_url?.url) {
         return { type: "input_image", image_url: part.image_url.url };
       }
@@ -85,7 +69,7 @@
   function toResponseInput(messages) {
     return messages.map((m) => ({
       role: m.role,
-      content: normalizeCodexContent(m.content)
+      content: normalizeCodexContent(m.content, m.role)
     }));
   }
 
@@ -140,14 +124,12 @@
   function createCodexProvider(config) {
     return {
       type: "codex",
-      label: config.label || "Codex (ChatGPT OAuth)",
+      label: config.label || "Codex（官方 OAuth 直连）",
       defaultModel: config.defaultModel || "gpt-5.1-codex",
-      requiresOAuth: true,
+      requiresOAuth: false,
 
       async ensureReady() {
-        if (!global.WpsAiAuth?.isAuthenticated()) {
-          throw new Error("请先使用 ChatGPT OAuth 登录。");
-        }
+        await ensureCodexCliReady();
       },
 
       async listModels() {

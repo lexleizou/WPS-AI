@@ -1,0 +1,13 @@
+"use strict";
+const assert = require("assert");
+const fs = require("fs");
+const js = fs.readFileSync(`${process.env.HOME}/.lingxi-ai/fixes/taskpane-redesign/lingxi-graphite-taskpane.js`, "utf8");
+assert(js.includes("scheduleDocumentPasteDedupe"), "dedupe scheduler missing");
+assert(js.includes("snapshotDocumentState"), "document snapshot missing");
+assert(js.includes("revertDuplicatedDocumentPaste"), "revert logic missing");
+assert(js.includes("newEnd - contentEnd !== pastedText.length"), "length guard missing");
+assert(js.includes("duplicated !== pastedText"), "exact-content guard missing");
+assert(js.includes("doc.Undo"), "must prefer Undo to cleanly revert tracked insertions");
+assert(js.includes("已撤销文档侧的重复粘贴"), "user feedback missing");
+assert(/keydown[\s\S]{0,500}scheduleDocumentPasteDedupe\(snapshotDocumentState\(\)\)/.test(js), "snapshot must be taken synchronously in keydown");
+console.log("PASS document paste dedupe");

@@ -2119,6 +2119,7 @@ textarea#resultOutput {
 
 /* 单次模型 override：输入区顶部小 bar + 按钮 active 态 + 独立 picker 弹层 */
 .chat-model-override-bar {
+  flex: none; /* 防挤压，同 .doc-lock-banner */
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -2134,6 +2135,7 @@ textarea#resultOutput {
 
 /* 修订模式条（仅 WPS 文字，输入框上方）：左开关 + 右接受/回撤 */
 .revise-mode-bar {
+  flex: none; /* 防挤压，同 .doc-lock-banner */
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -2186,6 +2188,7 @@ textarea#resultOutput {
 
 /* 技能沉淀提示条（输入框上方）：图标 + 文案 + 「总结成技能」+ 关闭 */
 .skill-suggest-bar {
+  flex: none; /* 防挤压，同 .doc-lock-banner */
   display: flex; align-items: center; gap: 8px;
   margin-bottom: 6px; padding: 5px 6px 5px 10px;
   border-radius: 8px;
@@ -9189,6 +9192,18 @@ body.pure-mode .image-gen-panel.hidden { display: none; }
 /* 右侧气泡本身已表明是"你"，不再显示"你"标签 */
 .tl-user .tl-label {
   display: none;
+}
+
+/* @引用 Word 选区注入成功后，app.js 在用户气泡末尾追加的引用标记 chip */
+.lingxi-ref-chip {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  background: var(--primary, #2563eb);
+  color: #fff;
+  opacity: 0.85;
 }
 
 .tl-assistant {

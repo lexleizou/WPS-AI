@@ -2,5 +2,5 @@
 <JsPlugin>
   <ApiVersion>1.0.0</ApiVersion>
   <Name>灵犀AI</Name>
-  <Description>灵犀AI WPS 加载项</Description>
+  <Description>灵犀AI WPS 加载项：通过 ChatGPT OAuth 登录并调用 OpenAI Responses API。</Description>
 </JsPlugin>

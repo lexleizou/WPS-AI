@@ -50,3 +50,8 @@ upload-oss/oss.config.js
 
 # AI 生成的 bug 报告
 docs/bug-report.md
+
+fixes/**/*-backups/
+fixes/**/backups/
+fixes/**/__pycache__/
+*.local.json

@@ -107,6 +107,15 @@
     "js/markdown-render.js",
     "js/mindmap.js", // 文档脑图：markdown 大纲 → echarts tree 数据
     "js/hosts/writer.js",
+    "js/hosts/writer-paragraph-cell.js", // LINGXI_WRITER_PARAGRAPH_CELL_TOOLS_V1_HOST
+    "js/hosts/writer-section-break.js", // LINGXI_WRITER_SECTION_BREAK_REMOVAL_V1_HOST
+    "js/hosts/writer-inspector.js", // LINGXI_WRITER_INSPECTOR_PHASE1_V1_HOST
+    "js/hosts/writer-format-guard.js", // LINGXI_WRITER_FORMAT_GUARD_V1_HOST
+    "js/hosts/writer-header-table-width.js", // LINGXI_WRITER_HEADER_TABLE_WIDTH_V1_HOST
+    "js/hosts/writer-header-footer-objects.js", // LINGXI_WRITER_HEADER_FOOTER_OBJECTS_V1_HOST
+    "js/hosts/writer-table-dimensions.js", // LINGXI_WRITER_TABLE_DIMENSIONS_V1_HOST
+    "js/hosts/writer-header-table-grid.js", // LINGXI_WRITER_HEADER_TABLE_GRID_V1_HOST
+    "js/hosts/writer-table-column-width.js", // LINGXI_WRITER_TABLE_COLUMN_WIDTH_V1_HOST
     "js/hosts/spreadsheet.js",
     "js/hosts/presentation.js",
     "js/hosts/pdf.js",
@@ -146,6 +155,7 @@
     "js/edit-shortcuts.js", // WPS 宿主快捷键兜底：粘贴等编辑键优先进入 WebView 输入框
     "js/mcp-bridge.js",     // MCP 服务桥：把 WPS 工具暴露给外部 agent (Claude Code CLI 等)
     "js/follow-highlight.js", // AI 操作跟随提示：修改型工具成功后滚动/选中改动位置（registry.execute 调用）
+    "js/writer-follow-feedback.js", // LINGXI_WRITER_FOLLOW_FEEDBACK_V1
     "js/format-templates.js", // AI 排版模板：内置（合同/公文/论文等）+ 自定义样式模板
     "js/format-risk.js",      // AI 排版段落风险画像（P0-1）：结构敏感段落打标防拆
     "js/long-rewrite.js",     // 长文改写：切节纯逻辑
@@ -160,6 +170,16 @@
     "js/tools/todos.js",
     "js/tools/spreadsheet.js",
     "js/tools/writer.js",
+    "js/tools/writer-table-safe.js", // LINGXI_WRITER_TABLE_SAFE_TOOLS_V1_LOAD
+    "js/tools/writer-paragraph-cell.js", // LINGXI_WRITER_PARAGRAPH_CELL_TOOLS_V1_TOOLS
+    "js/tools/writer-section-break.js", // LINGXI_WRITER_SECTION_BREAK_REMOVAL_V1_TOOLS
+    "js/tools/writer-inspector.js", // LINGXI_WRITER_INSPECTOR_PHASE1_V1_TOOLS
+    "js/tools/writer-format-guard.js", // LINGXI_WRITER_FORMAT_GUARD_V1_TOOLS
+    "js/tools/writer-header-table-width.js", // LINGXI_WRITER_HEADER_TABLE_WIDTH_V1_TOOLS
+    "js/tools/writer-header-footer-objects.js", // LINGXI_WRITER_HEADER_FOOTER_OBJECTS_V1_TOOLS
+    "js/tools/writer-table-dimensions.js", // LINGXI_WRITER_TABLE_DIMENSIONS_V1_TOOLS
+    "js/tools/writer-header-table-grid.js", // LINGXI_WRITER_HEADER_TABLE_GRID_V1_TOOLS
+    "js/tools/writer-table-column-width.js", // LINGXI_WRITER_TABLE_COLUMN_WIDTH_V1_TOOLS
     "js/tools/deck-staging.js",
     "js/tools/materials.js",
     "js/tools/web.js",
