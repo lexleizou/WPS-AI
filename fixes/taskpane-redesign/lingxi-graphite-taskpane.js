@@ -2358,7 +2358,9 @@
     const scheduleDecorate = () => {
       if (chatAnchorDecorateScheduled) return;
       chatAnchorDecorateScheduled = true;
-      window.requestAnimationFrame(decorate);
+      // 不用 requestAnimationFrame：WPS 嵌入 WebView 可能向页面报告 visibilityState=hidden，
+      // Chromium 会挂起 hidden 页面的 rAF，导致装饰永远不执行；setTimeout 不受此限。
+      window.setTimeout(decorate, 30);
     };
     stream.addEventListener("click", async (event) => {
       const link = event.target?.closest?.(".lingxi-chat-anchor-link");
@@ -2376,7 +2378,10 @@
       }
     });
     new MutationObserver(scheduleDecorate).observe(stream, { childList: true, characterData: true, subtree: true });
-    scheduleDecorate();
+    // 事件驱动的兜底：若 observer/rAF 链路在嵌入 WebView 中失效，用户在消息区任何交互都会触发一次装饰。
+    stream.addEventListener("pointerdown", scheduleDecorate, true);
+    stream.addEventListener("focusin", scheduleDecorate, true);
+    decorate();
   }
 
   const AGENT_REFERENCE_MAX_ITEMS = 4;

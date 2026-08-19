@@ -21,3 +21,7 @@ assert.deepStrictEqual(Array.from(parse("T0、T01、AT3、正文")), []);
 assert.ok(/document\?\.Tables \|\| document\?\.Content\?\.Tables/.test(source), "table anchors must resolve via document.Tables");
 assert.ok(/表格 \$\{text\}/.test(source), "missing-table error must mention the table anchor");
 console.log("PASS chat table anchor navigation");
+assert(!/requestAnimationFrame\(decorate\)/.test(source), "anchor decoration must not depend on rAF (hidden WebView suspends it)");
+assert(/setTimeout\(decorate, 30\)/.test(source), "anchor decoration must use setTimeout scheduling");
+assert(/pointerdown", scheduleDecorate/.test(source), "event-driven decoration fallback missing");
+console.log("PASS anchor decoration scheduling hardening");
