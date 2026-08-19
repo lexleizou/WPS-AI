@@ -411,6 +411,8 @@
       "use_skill", // 只加载技能指引文本给 AI，不改文档
       "save_skill", // 沉淀/优化技能到本地技能库，不改文档
       "wps_find_colored_text", // 只扫描颜色/高亮/底纹，不改文档（名字非 read_/get_/list_，需显式列为只读）
+      "wps_audit_paragraph_format", // 只读审计字体/段落格式，不改文档（audit_ 前缀不在黑名单关键字里）
+      "wps_inspect_section_boundaries", // 只读检查分节符边界，不改文档（inspect_ 前缀同理）
       "wps_export_pdf", "et_export_pdf", "wpp_export_pdf", // 导出另存 PDF，不改原文档内容——不必快照/记录
       // 另存/打印/文档属性：不改文档正文（属性改动内容快照也捕获不到），跳过快照避免刷无意义的改动记录
       "wps_save_as", "et_save_as", "wpp_save_as",

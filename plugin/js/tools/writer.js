@@ -207,7 +207,7 @@
   registry.registerTool({
     name: "wps_format_paragraph",
     hosts: ["wps"],
-    description: "设置段落格式（字体之外的排版）。scope=selection(选区,默认)/document(全文)。alignment 对齐(left/center/right/justify/distribute)；leftIndent/rightIndent/firstLineIndent 缩进(磅)；lineSpacing 行距(磅) + lineSpacingRule(single/oneAndHalf/double/atLeast/exactly/multiple)；spaceBefore/spaceAfter 段前段后(磅)。",
+    description: "设置当前选区的段落格式（字体之外的排版），仅用于用户已选中的局部选区（选区折叠时会报错，请先选中）。禁止用 scope=document 全量写入：全文/范围统一格式必须改用 wps_audit_paragraph_format → wps_apply_paragraph_format_mismatches → 再次审计复核。alignment 对齐(left/center/right/justify/distribute)；leftIndent/rightIndent/firstLineIndent 缩进(磅)；lineSpacing 行距(磅) + lineSpacingRule(single/oneAndHalf/double/atLeast/exactly/multiple)；spaceBefore/spaceAfter 段前段后(磅)。",
     parameters: {
       type: "object",
       properties: {
@@ -1625,6 +1625,11 @@
       const app = await getApp();
       const sel = app.Selection;
       if (!sel) throw new Error("未获取到 Selection。");
+      // 选区防护：折叠选区（纯光标）上设字符格式会悄悄作用于光标处/后续输入，先拦住让用户先选中
+      const selRange = typeof sel.Range === "function" ? await sel.Range() : sel.Range;
+      if (selRange && selRange.Start === selRange.End) {
+        throw new Error("当前没有选中内容（只有一个光标）。请先选中要设置格式的文字，再调用本工具。");
+      }
       const font = sel.Font;
       if (!font) throw new Error("未获取到 Font 对象。");
       const applied = {};
@@ -1635,7 +1640,14 @@
         font.Underline = opts.underline ? 1 : 0;
         applied.underline = opts.underline;
       }
-      if (opts.fontName) { font.Name = opts.fontName; applied.fontName = opts.fontName; }
+      if (opts.fontName) {
+        // 中文场景关键在 NameFarEast——只写 font.Name 中文字体不生效；四键统一写同名，缺键的老版本逐个兜底
+        try { font.Name = opts.fontName; } catch (e) {}
+        try { font.NameFarEast = opts.fontName; } catch (e) {}
+        try { font.NameAscii = opts.fontName; } catch (e) {}
+        try { font.NameOther = opts.fontName; } catch (e) {}
+        applied.fontName = opts.fontName;
+      }
       if (typeof opts.fontSize === "number") { font.Size = opts.fontSize; applied.fontSize = opts.fontSize; }
       if (opts.color) { font.Color = parseColor(opts.color); applied.color = opts.color; }
       if (opts.highlight) {

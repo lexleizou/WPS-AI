@@ -1841,22 +1841,38 @@
     } else {
       const sel = await getSelection();
       if (!sel) throw new Error("未获取到选区。");
+      // 选区防护：折叠选区（纯光标）上设段落格式会悄悄作用于光标所在段，先拦住让用户先选中
+      const selRange = typeof sel.Range === "function" ? await sel.Range() : sel.Range;
+      if (selRange && selRange.Start === selRange.End) {
+        throw new Error("当前没有选中内容（只有一个光标）。请先在文档里选中要设置格式的段落，再调用本工具。");
+      }
       pf = sel.ParagraphFormat;
     }
-    if (opts.alignment && WD_ALIGN[opts.alignment] != null) { try { pf.Alignment = WD_ALIGN[opts.alignment]; } catch (e) {} }
-    if (numOr(opts.leftIndent) != null) { try { pf.LeftIndent = opts.leftIndent; } catch (e) {} }
-    if (numOr(opts.rightIndent) != null) { try { pf.RightIndent = opts.rightIndent; } catch (e) {} }
-    if (numOr(opts.firstLineIndent) != null) { try { pf.FirstLineIndent = opts.firstLineIndent; } catch (e) {} }
-    if (numOr(opts.spaceBefore) != null) { try { pf.SpaceBefore = opts.spaceBefore; } catch (e) {} }
-    if (numOr(opts.spaceAfter) != null) { try { pf.SpaceAfter = opts.spaceAfter; } catch (e) {} }
+    // 写入后立即读回比对：COM 静默失败很常见，失败字段收集进 failures 如实上报，不再空吞
+    const failures = [];
+    const applyProp = (field, value) => {
+      try {
+        pf[field] = value;
+        const actual = Number(pf[field]);
+        if (actual !== Number(value)) failures.push({ field, expected: value, actual });
+      } catch (e) {
+        failures.push({ field, expected: value, error: String((e && e.message) || e) });
+      }
+    };
+    if (opts.alignment && WD_ALIGN[opts.alignment] != null) applyProp("Alignment", WD_ALIGN[opts.alignment]);
+    if (numOr(opts.leftIndent) != null) applyProp("LeftIndent", opts.leftIndent);
+    if (numOr(opts.rightIndent) != null) applyProp("RightIndent", opts.rightIndent);
+    if (numOr(opts.firstLineIndent) != null) applyProp("FirstLineIndent", opts.firstLineIndent);
+    if (numOr(opts.spaceBefore) != null) applyProp("SpaceBefore", opts.spaceBefore);
+    if (numOr(opts.spaceAfter) != null) applyProp("SpaceAfter", opts.spaceAfter);
     const WD_LS = { single: 0, oneAndHalf: 1, double: 2, atLeast: 3, exactly: 4, multiple: 5 };
     if (opts.lineSpacingRule && WD_LS[opts.lineSpacingRule] != null) {
-      try { pf.LineSpacingRule = WD_LS[opts.lineSpacingRule]; } catch (e) {}
-      if (numOr(opts.lineSpacing) != null) { try { pf.LineSpacing = opts.lineSpacing; } catch (e) {} }
+      applyProp("LineSpacingRule", WD_LS[opts.lineSpacingRule]);
+      if (numOr(opts.lineSpacing) != null) applyProp("LineSpacing", opts.lineSpacing);
     } else if (numOr(opts.lineSpacing) != null) {
-      try { pf.LineSpacing = opts.lineSpacing; } catch (e) {}
+      applyProp("LineSpacing", opts.lineSpacing);
     }
-    return { scope: opts.scope || "selection", applied: true };
+    return { scope: opts.scope || "selection", applied: failures.length === 0, failures };
   }
 
   async function setHeaderFooter(opts = {}) {
@@ -1864,27 +1880,73 @@
     const section = d.Sections.Item(1);
     const hf = opts.target === "footer" ? section.Footers.Item(1) : section.Headers.Item(1); // wdHeaderFooterPrimary=1
     const range = hf.Range;
-    if (opts.text != null) { try { range.Text = String(opts.text); } catch (e) {} }
-    if (opts.alignment && WD_ALIGN[opts.alignment] != null) { try { range.ParagraphFormat.Alignment = WD_ALIGN[opts.alignment]; } catch (e) {} }
+    // 与 formatParagraph 同款：写入后读回校验，失败进 failures 如实上报
+    const failures = [];
+    if (opts.text != null) {
+      try {
+        range.Text = String(opts.text);
+        // 页眉页脚 Range 末尾自带 \r，读回比对时剥掉
+        const actual = String(range.Text || "").replace(/\r/g, "");
+        if (actual !== String(opts.text)) failures.push({ field: "text", expected: String(opts.text), actual });
+      } catch (e) {
+        failures.push({ field: "text", error: String((e && e.message) || e) });
+      }
+    }
+    if (opts.alignment && WD_ALIGN[opts.alignment] != null) {
+      try {
+        range.ParagraphFormat.Alignment = WD_ALIGN[opts.alignment];
+        const actual = Number(range.ParagraphFormat.Alignment);
+        if (actual !== WD_ALIGN[opts.alignment]) failures.push({ field: "alignment", expected: WD_ALIGN[opts.alignment], actual });
+      } catch (e) {
+        failures.push({ field: "alignment", expected: WD_ALIGN[opts.alignment], error: String((e && e.message) || e) });
+      }
+    }
     if (opts.pageNumber) {
       const PNA = { left: 0, center: 1, right: 2 };
-      try { hf.PageNumbers.Add(PNA[opts.alignment] == null ? 2 : PNA[opts.alignment]); } catch (e) {}
+      const countOf = () => { try { return Number(hf.PageNumbers.Count) || 0; } catch (e) { return 0; } };
+      const before = countOf();
+      try {
+        hf.PageNumbers.Add(PNA[opts.alignment] == null ? 2 : PNA[opts.alignment]);
+        const after = countOf();
+        if (after <= before) failures.push({ field: "pageNumber", expected: before + 1, actual: after });
+      } catch (e) {
+        failures.push({ field: "pageNumber", error: String((e && e.message) || e) });
+      }
     }
-    return { target: opts.target || "header", applied: true };
+    return { target: opts.target || "header", applied: failures.length === 0, failures };
   }
 
   async function pageSetup(opts = {}) {
     const d = await ensureDocument();
     const ps = d.PageSetup;
-    if (opts.orientation) { try { ps.Orientation = opts.orientation === "landscape" ? 1 : 0; } catch (e) {} } // wdOrientLandscape=1
-    if (numOr(opts.topMargin) != null) { try { ps.TopMargin = opts.topMargin; } catch (e) {} }
-    if (numOr(opts.bottomMargin) != null) { try { ps.BottomMargin = opts.bottomMargin; } catch (e) {} }
-    if (numOr(opts.leftMargin) != null) { try { ps.LeftMargin = opts.leftMargin; } catch (e) {} }
-    if (numOr(opts.rightMargin) != null) { try { ps.RightMargin = opts.rightMargin; } catch (e) {} }
+    // 与 formatParagraph 同款：写入后读回校验，失败进 failures 如实上报
+    const failures = [];
+    const applyProp = (field, value) => {
+      try {
+        ps[field] = value;
+        const actual = Number(ps[field]);
+        if (actual !== Number(value)) failures.push({ field, expected: value, actual });
+      } catch (e) {
+        failures.push({ field, expected: value, error: String((e && e.message) || e) });
+      }
+    };
+    if (opts.orientation) applyProp("Orientation", opts.orientation === "landscape" ? 1 : 0); // wdOrientLandscape=1
+    if (numOr(opts.topMargin) != null) applyProp("TopMargin", opts.topMargin);
+    if (numOr(opts.bottomMargin) != null) applyProp("BottomMargin", opts.bottomMargin);
+    if (numOr(opts.leftMargin) != null) applyProp("LeftMargin", opts.leftMargin);
+    if (numOr(opts.rightMargin) != null) applyProp("RightMargin", opts.rightMargin);
     const PAPER = { a4: 7, a3: 6, letter: 1, legal: 5 };
-    if (opts.paperSize && PAPER[opts.paperSize] != null) { try { ps.PaperSize = PAPER[opts.paperSize]; } catch (e) {} }
-    if (numOr(opts.columns) != null && opts.columns > 0) { try { ps.TextColumns.SetCount(opts.columns); } catch (e) {} }
-    return { applied: true };
+    if (opts.paperSize && PAPER[opts.paperSize] != null) applyProp("PaperSize", PAPER[opts.paperSize]);
+    if (numOr(opts.columns) != null && opts.columns > 0) {
+      try {
+        ps.TextColumns.SetCount(opts.columns);
+        const actual = Number(ps.TextColumns.Count);
+        if (actual !== opts.columns) failures.push({ field: "columns", expected: opts.columns, actual });
+      } catch (e) {
+        failures.push({ field: "columns", expected: opts.columns, error: String((e && e.message) || e) });
+      }
+    }
+    return { applied: failures.length === 0, failures };
   }
 
   async function insertFootnote(opts = {}) {
