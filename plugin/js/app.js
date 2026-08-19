@@ -1195,6 +1195,25 @@
       global.WpsAiEditShortcuts?.getEditableTarget?.(target, activeElement())
       || (isEditable(target) ? target : (isEditable(activeElement()) ? activeElement() : null))
     );
+    // 粘贴/复制目标的权威来源：最近一次 pointerdown/focusin 交互过的可编辑元素。
+    // activeElement 只作兜底 —— 用户点过输入框后再去选中聊天消息文本时，
+    // activeElement 可能还停在输入框上，单看它会误判复制/粘贴目标。
+    let lastInteractedEditable = null;
+    const preferredEditableTarget = (target) => {
+      const last = lastInteractedEditable;
+      if (last && last.isConnected !== false && isEditable(last)) return last;
+      return editableTarget(target);
+    };
+    // DOM 实际选区是否落在该可编辑元素内：INPUT/TEXTAREA 的选区不进 window.getSelection()，
+    // 焦点在框内即视为选区在框内；contenteditable / 普通 DOM 用 Range 公共祖先判断。
+    const selectionWithin = (el) => {
+      if (!el) return false;
+      const tag = el.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return el === activeElement();
+      const sel = (el.ownerDocument || doc).getSelection?.() || window.getSelection?.();
+      if (!sel || !sel.rangeCount || sel.isCollapsed) return false;
+      try { return el.contains(sel.getRangeAt(0).commonAncestorContainer); } catch (e) { return false; }
+    };
     const writeTextToClipboard = async (text, restoreEl) => {
       if (!text) return false;
       const clipboardDoc = (restoreEl && restoreEl.ownerDocument) || doc || document;
@@ -1292,8 +1311,8 @@
       return "";
     };
     // 原生粘贴的单次兜底：只有当浏览器没有派发（或没被我们收到）paste 事件、
-    // 蒙版计时器到点时才跑一次，不再嵌套重试。总耗时上限约 1.5s
-    // （navigator.clipboard 的短超时 + 一次代理 fetch 的 1s 超时）。
+    // 蒙版计时器到点时才跑一次，不再嵌套重试。总耗时上限约 4.2s
+    // （navigator.clipboard 的 180ms 短超时 + 一次代理 fetch 的 4s 超时）。
     function runPasteSafetyFallback(pending) {
       if (!pending || pending.handled || pendingManualPaste !== pending) return;
       const editEl = pending.target;
@@ -1303,9 +1322,12 @@
         pending.handled = true;
         pendingManualPaste = null;
         hidePasteMask();
-        if (!txt) return;
+        // 兜底链读空 = 真失败：别静默吞掉（否则表现是"按了没反应"），给用户可见提示
+        if (!txt) { showMessage("粘贴失败：读不到剪贴板内容，请重试。", "error"); return; }
         const target = editableTarget(editEl) || editEl;
-        if (!handleChatPastedText(target, txt)) insertClipboardTextInto(target, txt);
+        if (!handleChatPastedText(target, txt) && !insertClipboardTextInto(target, txt)) {
+          showMessage("粘贴失败：无法插入到当前输入框。", "error");
+        }
       };
       readNavigatorClipboardTextWithTimeout()
         .then((txt) => {
@@ -1329,11 +1351,19 @@
       }
     });
 
-    onDoc("focusin", (ev) => { if (isEditable(ev.target)) release(); }, true);
+    onDoc("focusin", (ev) => {
+      if (!isEditable(ev.target)) return;
+      lastInteractedEditable = ev.target;
+      release();
+    }, true);
     // 右侧聊天区域一被点击（不限可编辑元素）就让出主窗口 OS 焦点 —— 根因修复：
     // 否则左侧文档的插入点(光标)仍然活着，Ctrl+V 会被同时投递给文档和聊天框 → 双份粘贴。
     // 用 pointerdown 捕获阶段：早于 focus 结算，抢焦点最及时，比只在 focusin(可编辑元素) 时释放覆盖更全。
-    onDoc("pointerdown", () => { release(); }, true);
+    // 顺带记录最近一次交互的可编辑元素，作为粘贴/复制目标的权威来源。
+    onDoc("pointerdown", (ev) => {
+      if (isEditable(ev.target)) lastInteractedEditable = ev.target;
+      release();
+    }, true);
     // 编辑快捷键按下的瞬间再让一次焦点，防止主窗口在 focus 后又抢回去（focus 一次性不够）
     onDoc("keydown", (ev) => {
       if (!(ev.ctrlKey || ev.metaKey) || ev.altKey) return;
@@ -1341,17 +1371,22 @@
       if (!editEl) return;
       const k = String(ev.key || "").toLowerCase();
       if (k === "v") {
-        // 不再拦截原生粘贴：release() 把 OS 键盘焦点从 WPS 主窗口让给 WebView，
-        // 之后让浏览器原生派发 paste 事件（下面的 paste 监听器负责插入），
-        // 这样粘贴是瞬时的，不用等我们手动读剪贴板。
+        // 不在 keydown 阶段 preventDefault：这里只记录粘贴意图。
+        // release() 把 OS 键盘焦点从 WPS 主窗口让给 WebView，之后让浏览器原生派发
+        // paste 事件（下面的 paste 监听器用 ev.clipboardData 同步读取并插入、
+        // preventDefault 阻止二次插入）；300ms 兜底只在 paste 事件确实没来时触发。
         release();
         try { window.focus(); } catch (e) {}
-        pendingManualPaste = { target: editEl, ts: Date.now(), handled: false, timer: null };
+        pendingManualPaste = { target: preferredEditableTarget(ev.target) || editEl, ts: Date.now(), handled: false, timer: null };
         pendingManualPaste.timer = setTimeout(() => runPasteSafetyFallback(pendingManualPaste), 300);
         showPasteMaskSoon();
         return;
       }
       if (k === "a" || k === "c" || k === "x") {
+        // Cmd+C/X 先看 DOM 实际选区：选区不在这个可编辑元素内（比如用户选中的是
+        // 聊天消息文本）就完全不拦截、不 preventDefault，放行原生复制/剪切；
+        // 只有选区确实在输入框内才走手动复制（WPS 里 WebView 原生 copy 不可靠）。
+        if (k !== "a" && !selectionWithin(editEl)) return;
         release();
         ev.preventDefault();
         ev.stopPropagation();
@@ -1401,13 +1436,15 @@
       // paste 事件到达即是「原生粘贴正在发生」的权威信号：无论能否从 clipboardData
       // 取到文本，都先取消 300ms 兜底，否则 clipboardData 为空但原生默认粘贴仍插入时，
       // 兜底会再读一次剪贴板造成双重插入。
+      const pendingTarget = pendingManualPaste ? pendingManualPaste.target : null;
       if (pendingManualPaste) {
         pendingManualPaste.handled = true;
         if (pendingManualPaste.timer) clearTimeout(pendingManualPaste.timer);
       }
       pendingManualPaste = null;
       hidePasteMask();
-      const target = editableTarget(ev.target);
+      // 目标优先用 keydown 记录的最近交互可编辑元素，事件目标/activeElement 只作兜底
+      const target = pendingTarget || editableTarget(ev.target);
       // 聊天输入框粘贴图片 → 直接当附件收，不落地成文本/base64 塞进输入框。
       if (isChatAttachmentInput(target) && ev.clipboardData) {
         const imageFiles = Array.from(ev.clipboardData.items || [])
@@ -14656,7 +14693,10 @@
       if (input.selectionStart !== v.length) { closeSlashPopup(); return; }
       // 匹配末尾 "/xxx" 或 "@xxx" ；行内触发也允许（前面有空格 / 换行 / 开头）
       const slashMatch = v.match(/(?:^|\s)\/([\w\-一-龥]*)$/);
-      const atMatch = v.match(/(?:^|\s)@([\w\-一-龥]*)$/);
+      // Graphite 皮肤层（body.lingxi-graphite-v1）自带 @ 引用 chip 菜单，
+      // 开着它时跳过这里的 @ 弹层，避免两个菜单同时弹；输入 @ 本身不受影响。
+      const graphiteOwnsAt = !!document.body?.classList?.contains("lingxi-graphite-v1");
+      const atMatch = !graphiteOwnsAt && v.match(/(?:^|\s)@([\w\-一-龥]*)$/);
       if (slashMatch) openSlashPopup("slash", slashMatch[1]);
       else if (atMatch) openSlashPopup("at", atMatch[1]);
       else closeSlashPopup();
@@ -14678,6 +14718,40 @@
         const active = _slashPopupEl.querySelector(".chat-slash-item.active");
         if (active) applySlashChoice(active.dataset.kind, active.dataset.key);
       }
+    });
+  }
+
+  // Graphite 皮肤层「引用注入」桥：收到 lingxi:reference-injected 时，把引用文本
+  // 原地追加到 chatHistory 最后一条 user 消息的 content（出站 messages 组装自 chatHistory，
+  // 自然带上引用，无需重复注入），并在该用户气泡上补一个引用标记 chip（样式由皮肤层 CSS 负责）。
+  function setupReferenceInjectedListener() {
+    window.addEventListener("lingxi:reference-injected", (ev) => {
+      const text = String(ev?.detail?.text || "").trim();
+      if (!text) return;
+      for (let i = chatHistory.length - 1; i >= 0; i -= 1) {
+        const msg = chatHistory[i];
+        if (!msg || msg.role !== "user") continue;
+        if (typeof msg.content === "string") {
+          msg.content += "\n\n" + text;
+        } else if (Array.isArray(msg.content)) {
+          // 多模态 content 是 parts 数组（见 runChatTurn 组装处）：引用并进第一个 text part
+          const part = msg.content.find((p) => p && p.type === "text");
+          if (part) part.text = String(part.text || "") + "\n\n" + text;
+          else msg.content.unshift({ type: "text", text });
+        }
+        break;
+      }
+      // 最近一条用户气泡（时间轴 .tl-msg.tl-user，旧结构 .chat-msg.user 兜底）上挂引用 chip
+      const stream = els.chatStream;
+      if (!stream) return;
+      const bubbles = stream.querySelectorAll(".tl-msg.tl-user, .chat-msg.user");
+      const bubble = bubbles && bubbles[bubbles.length - 1];
+      if (!bubble) return;
+      const chip = document.createElement("span");
+      chip.className = "lingxi-ref-chip";
+      chip.title = text;
+      chip.textContent = text.length > 24 ? text.slice(0, 24) + "…" : text;
+      (bubble.querySelector(".tl-body") || bubble).appendChild(chip);
     });
   }
 
@@ -14885,6 +14959,7 @@
     setupChatPanelUx();
     setupModelOverrideControls();
     setupChatSlashCommands();
+    setupReferenceInjectedListener();
     setupSettingsSearch();
 
     // 修 #13: 监听同源其他窗口的 cache 清空广播。

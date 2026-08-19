@@ -2724,7 +2724,7 @@
       const doc = application?.ActiveDocument;
       const sel = application?.Selection;
       if (!doc || !sel) throw new Error("未检测到 WPS 文字文档或选区");
-      const range = typeof sel.Range === "function" ? sel.Range() : sel.Range;
+      const range = typeof sel.Range === "function" ? await sel.Range() : sel.Range;
       const text = String(sel.Text || range?.Text || "").trim();
       if (!text) {
         setAgentReferenceNotice("请先在左侧 Word 文档中选中要引用的内容", "warning");
@@ -2803,6 +2803,17 @@
       if (event.key === "Escape") closeAgentReferenceMenu();
     }, true);
     window.addEventListener("resize", closeAgentReferenceMenu, { passive: true });
+    // 引用按对话隔离：会话切换时清空 chip，避免上一对话的引用泄漏进新对话。
+    // subscribe 回调不带参数且任何会话变更都会触发，需自行比对 currentId 区分真正的切换。
+    let lastReferenceConversationId = window.WpsAiConversations?.getCurrentId?.() || null;
+    window.WpsAiConversations?.subscribe?.(() => {
+      const currentId = window.WpsAiConversations?.getCurrentId?.() || null;
+      if (currentId === lastReferenceConversationId) return;
+      lastReferenceConversationId = currentId;
+      agentReferenceState?.clear?.();
+      setAgentReferenceNotice("");
+      renderAgentReferences();
+    });
     renderAgentReferences();
   }
 
@@ -2841,6 +2852,8 @@
       content = `${referenceBlock}\n${String(message.content || "")}`;
     }
     messages[userIndex] = Object.assign({}, message, { content });
+    // 通知 app.js 把本轮注入的引用块写入历史与气泡（app.js 自行监听，不在本层处理）。
+    window.dispatchEvent(new CustomEvent("lingxi:reference-injected", { detail: { text: referenceBlock } }));
     return Object.assign({}, request, { messages });
   }
 
@@ -2975,28 +2988,9 @@
       const element = node?.nodeType === 1 ? node : node?.parentElement;
       return !!(stream && element && stream.contains(element) && element.closest?.(".chat-msg, .tool-body, .reasoning-body"));
     };
-    document.addEventListener("keydown", (event) => {
-      if (!(event.metaKey || event.ctrlKey) || event.altKey || String(event.key || "").toLowerCase() !== "c") return;
-      // 即使焦点还停在 chatInput，只要 DOM 选区实际落在 AI 消息上也必须优先复制该选区。
-      // 只有选区不在消息流时，才交还输入框原有复制行为。
-      const selection = window.getSelection?.();
-      if (!isSelectionInChat(selection)) return;
-      event.preventDefault();
-      event.stopPropagation();
-      if (typeof event.stopImmediatePropagation === "function") event.stopImmediatePropagation();
-      const text = String(selection?.toString() || "");
-      // execCommand 使用保留的 DOM 选区，和浏览器右键“复制”走同一条路径；必须同步执行以保留用户手势。
-      try { document.execCommand("copy"); } catch (_) {}
-      try { navigator.clipboard?.writeText?.(text).catch(() => {}); } catch (_) {}
-      // 关键兜底：WebView 内部剪贴板与系统隔离，必须经代理镜像到系统剪贴板；
-      // 提示同时充当诊断——若按 Cmd+C 连提示都不出现，说明按键未到达页面。
-      mirrorTextToSystemClipboard(text).then((ok) => {
-        showCopyHint(ok ? `已复制 ${text.length} 字符` : "复制失败：本地代理未响应", !ok);
-      });
-    }, true);
-
-    // macOS 上 Cmd+C 是菜单键等价：WPS 原生菜单可能直接消费按键，页面收不到 keydown，
-    // 但 WebView 处理 copy: 动作时会派发 DOM copy 事件。补一条 copy 事件链路。
+    // 复制消息的 keydown 拦截已移交 app.js（按 DOM 选区位置决定是否拦截）；这里只保留
+    // copy 事件链路：macOS 上 Cmd+C 是菜单键等价，WPS 原生菜单可能直接消费按键，
+    // 页面收不到 keydown，但 WebView 处理 copy: 动作时会派发 DOM copy 事件。
     document.addEventListener("copy", (event) => {
       const selection = window.getSelection?.();
       if (!isSelectionInChat(selection)) return;
@@ -3078,8 +3072,8 @@
     const isChatInput = (el) => el && (el.id === "chatInput" || el.closest?.("#chatInput"));
 
     // macOS WPS 无 CommandBars.ReleaseFocus：Cmd+V 在 OS 层同时投递给 WebView 与主文档，
-    // 页面内 stopPropagation 拦不住原生侧。改为快照对比：按键瞬间记录文档状态，
-    // 延迟核对上次光标处是否被原生侧插入了与剪贴板完全相同的内容，命中则精确撤销。
+    // 页面内 stopPropagation 拦不住原生侧。改为快照对比：paste 事件瞬间记录文档状态，
+    // 延迟核对上次光标处是否被原生侧插入了与剪贴板相同的内容，命中则精确删除重复范围。
     async function readClipboardText() {
       try {
         const url = window.WpsAiRuntime?.proxyUrl
@@ -3112,16 +3106,21 @@
     function revertDuplicatedDocumentPaste(snap, pastedText) {
       if (!snap || !pastedText) return false;
       const { doc, cursorStart, contentEnd } = snap;
+      // 剪贴板文本以 \n 分行，而 Word Range.Text 的段落标记是 \r：比对前统一归一化，容忍换行差异。
+      const normalize = (value) => String(value || "").replace(/\r\n?/g, "\n");
+      const expected = normalize(pastedText);
       const newEnd = Number(doc.Content?.End);
-      if (!Number.isFinite(newEnd) || newEnd - contentEnd !== pastedText.length) return false;
-      const duplicated = rangeText(doc, cursorStart, cursorStart + pastedText.length);
-      if (duplicated !== pastedText) return false;
-      // 优先 Undo：连同修订记录一起干净撤掉插入；不可用时退化为精确删除该重复范围。
-      try { if (typeof doc.Undo === "function") { doc.Undo(1); if (rangeText(doc, cursorStart, cursorStart + pastedText.length) !== pastedText) return true; } } catch (error) {}
-      try { if (typeof doc.Undo === "function") { doc.Undo(); if (rangeText(doc, cursorStart, cursorStart + pastedText.length) !== pastedText) return true; } } catch (error) {}
+      if (!Number.isFinite(newEnd)) return false;
+      // 长度仍需吻合；唯一容差来自换行归一化（每个 \n 在文档里可能占 \r\n 两个字符）。
+      const insertedLength = newEnd - contentEnd;
+      const newlineCount = (expected.match(/\n/g) || []).length;
+      if (insertedLength < expected.length || insertedLength > expected.length + newlineCount) return false;
+      const duplicated = normalize(rangeText(doc, cursorStart, cursorStart + insertedLength));
+      if (duplicated !== expected) return false;
+      // 不用 doc.Undo()：撤销栈不可控，可能误回退用户在别处的真实编辑；只精确删除已验证的重复范围。
       try {
-        const range = typeof doc.Range === "function" ? doc.Range(cursorStart, cursorStart + pastedText.length) : null;
-        if (range && rangeText(doc, cursorStart, cursorStart + pastedText.length) === pastedText) {
+        const range = typeof doc.Range === "function" ? doc.Range(cursorStart, cursorStart + insertedLength) : null;
+        if (range && normalize(rangeText(doc, cursorStart, cursorStart + insertedLength)) === expected) {
           if (typeof range.Delete === "function") { range.Delete(); return true; }
           range.Text = "";
           return true;
@@ -3139,7 +3138,7 @@
           if (delay) await new Promise((resolve) => window.setTimeout(resolve, delay));
           try {
             if (revertDuplicatedDocumentPaste(snap, pastedText)) {
-              showCopyHint("已撤销文档侧的重复粘贴");
+              showCopyHint("已删除文档侧的重复粘贴");
               return;
             }
           } catch (error) { return; }
@@ -3147,17 +3146,11 @@
       }, 350);
     }
 
-    document.addEventListener("keydown", (ev) => {
-      if (!(ev.metaKey || ev.ctrlKey) || ev.altKey || String(ev.key || "").toLowerCase() !== "v") return;
-      const target = document.activeElement;
-      if (!isChatInput(target)) return;
-      // 原生双投递发生前同步快照文档状态，随后检测并撤销文档侧的重复粘贴。
+    // Cmd+V 的拦截已移交 app.js（keydown 不再 preventDefault，改在 paste 事件内同步处理）。
+    // 这里只在 chatInput 收到 paste 时快照文档状态并调度去重，检测原生双投递在文档侧造成的重复插入。
+    document.addEventListener("paste", (ev) => {
+      if (!isChatInput(ev.target)) return;
       scheduleDocumentPasteDedupe(snapshotDocumentState());
-      // app.js 的 capture handler 已先建立 pendingManualPaste；阻止后由它的 clipboard fallback
-      // 只向 TaskPane 写入一次，从而不污染左侧正文。
-      ev.preventDefault();
-      ev.stopPropagation();
-      if (typeof ev.stopImmediatePropagation === "function") ev.stopImmediatePropagation();
     }, true);
 
     // WPS 的原生右键菜单会把“粘贴”执行到 Writer。已有自定义菜单缺少粘贴项，
