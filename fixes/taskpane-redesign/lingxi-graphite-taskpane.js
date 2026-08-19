@@ -2768,6 +2768,44 @@
       });
     }, true);
 
+    // Cmd+C 会被 WPS 原生菜单完全消费（实测 keydown 与 copy 事件均不到达页面）。
+    // 提供鼠标路径：在聊天选区附近浮出「复制」按钮，一键写入系统剪贴板。
+    let floatingCopyBtn = null;
+    const hideFloatingCopy = () => { if (floatingCopyBtn) floatingCopyBtn.classList.remove("visible"); };
+    document.addEventListener("pointerup", () => {
+      window.setTimeout(() => {
+        const selection = window.getSelection?.();
+        if (!isSelectionInChat(selection)) { hideFloatingCopy(); return; }
+        const text = String(selection?.toString() || "");
+        if (!floatingCopyBtn) {
+          floatingCopyBtn = document.createElement("button");
+          floatingCopyBtn.type = "button";
+          floatingCopyBtn.className = "lingxi-floating-copy-btn";
+          floatingCopyBtn.textContent = "复制";
+          document.body.appendChild(floatingCopyBtn);
+        }
+        floatingCopyBtn.onclick = () => {
+          try { document.execCommand("copy"); } catch (_) {}
+          mirrorTextToSystemClipboard(text).then((ok) => {
+            showCopyHint(ok ? `已复制 ${text.length} 字符` : "复制失败：本地代理未响应", !ok);
+          });
+          hideFloatingCopy();
+        };
+        try {
+          const rect = selection.getRangeAt(0).getBoundingClientRect();
+          const left = Math.min(Math.max(8, rect.left + rect.width / 2 - 24), window.innerWidth - 64);
+          const top = Math.max(8, rect.top - 34);
+          floatingCopyBtn.style.left = `${left}px`;
+          floatingCopyBtn.style.top = `${top}px`;
+          floatingCopyBtn.classList.add("visible");
+        } catch (_) { hideFloatingCopy(); }
+      }, 10);
+    });
+    document.addEventListener("pointerdown", (event) => {
+      if (floatingCopyBtn && !floatingCopyBtn.contains(event.target)) hideFloatingCopy();
+    }, true);
+    document.addEventListener("keydown", (event) => { if (event.key === "Escape") hideFloatingCopy(); }, true);
+
     // 输入框复制走 app.js 的 editable 处理器（其 navigator.clipboard 成功后不会走代理兜底），
     // 这里包一层 WpsAiEditShortcuts，复制/剪切成功后同样镜像到系统剪贴板。
     const shortcuts = window.WpsAiEditShortcuts;

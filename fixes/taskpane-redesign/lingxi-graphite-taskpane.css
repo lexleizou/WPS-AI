@@ -1443,3 +1443,22 @@ body.lingxi-graphite-v1 .lingxi-copy-hint {
 }
 body.lingxi-graphite-v1 .lingxi-copy-hint.visible { opacity: 1; }
 body.lingxi-graphite-v1 .lingxi-copy-hint.lingxi-copy-hint-error { color: var(--lg-error); }
+
+/* Floating copy button: mouse-path copy for chat selections (Cmd+C is consumed by the WPS native menu). */
+body.lingxi-graphite-v1 .lingxi-floating-copy-btn {
+  position: fixed;
+  z-index: 160;
+  padding: 4px 12px;
+  border: 1px solid var(--lg-border);
+  border-radius: 6px;
+  background: var(--lg-bg-elevated);
+  color: var(--lg-text);
+  box-shadow: var(--lg-shadow-float);
+  font-size: 12px;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .12s ease;
+}
+body.lingxi-graphite-v1 .lingxi-floating-copy-btn.visible { opacity: 1; pointer-events: auto; }
+body.lingxi-graphite-v1 .lingxi-floating-copy-btn:hover { color: var(--lg-primary); border-color: var(--lg-primary); }
