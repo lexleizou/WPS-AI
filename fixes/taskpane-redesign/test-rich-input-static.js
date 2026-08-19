@@ -9,3 +9,9 @@ assert(js.includes("buildRichToolbar(promptInput)") && js.includes("buildRichToo
 assert(js.includes("attachRichSurface(promptInput)") && js.includes("attachRichSurface(experienceInput)"), "preset surfaces missing");
 assert(css.includes(".lri-backdrop") && css.includes("caret-color"), "surface styles missing");
 console.log("PASS rich input static wiring");
+assert(js.includes("layoutRichSurface"), "backdrop layout alignment missing");
+assert(js.includes("borderLeftWidth"), "must copy border widths for caret alignment");
+assert(js.includes("attachProtectedPaste"), "protected paste missing");
+assert(js.includes("fromProxy.length >= fromEvent.length"), "proxy-full-text preference guard missing");
+assert(js.includes("attachProtectedPaste(promptInput)") && js.includes("attachProtectedPaste(experienceInput)"), "protected paste not wired to preset editor");
+console.log("PASS rich surface alignment and protected paste");

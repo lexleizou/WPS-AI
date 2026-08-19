@@ -1467,14 +1467,13 @@ body.lingxi-graphite-v1 .lingxi-floating-copy-btn:hover { color: var(--lg-primar
 body.lingxi-graphite-v1 .lri-wrap { position: relative; width: 100%; }
 body.lingxi-graphite-v1 .lri-backdrop {
   position: absolute;
-  inset: 0;
   overflow: hidden;
   pointer-events: none;
   white-space: pre-wrap;
   word-break: break-word;
   overflow-wrap: break-word;
   color: var(--lg-text);
-  border: 1px solid transparent;
+  border: 0 solid transparent;
 }
 body.lingxi-graphite-v1 .lri-wrap > textarea.lri-active {
   position: relative;

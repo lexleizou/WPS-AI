@@ -1625,6 +1625,8 @@
     body.append(nameLabel, promptLabel, experienceLabel);
     attachRichSurface(promptInput);
     attachRichSurface(experienceInput);
+    attachProtectedPaste(promptInput);
+    attachProtectedPaste(experienceInput);
 
     const footer = createNode("lingxi-prompt-modal-footer");
     const left = createNode("lingxi-prompt-modal-secondary");
@@ -3072,10 +3074,57 @@
     entry.backdrop.scrollLeft = entry.textarea.scrollLeft;
   }
 
+  // 背板精确覆盖 textarea 的内容盒：边框宽度也复制（透明），否则 caret 与首列文字错位。
+  function layoutRichSurface(entry) {
+    const textarea = entry.textarea, backdrop = entry.backdrop;
+    const computed = window.getComputedStyle(textarea);
+    backdrop.style.boxSizing = "border-box";
+    backdrop.style.borderStyle = "solid";
+    backdrop.style.borderColor = "transparent";
+    for (const prop of ["borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth"]) backdrop.style[prop] = computed[prop];
+    for (const prop of ["fontFamily", "fontSize", "fontWeight", "lineHeight", "letterSpacing", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft"]) backdrop.style[prop] = computed[prop];
+    backdrop.style.left = `${textarea.offsetLeft}px`;
+    backdrop.style.top = `${textarea.offsetTop}px`;
+    backdrop.style.width = `${textarea.offsetWidth}px`;
+    backdrop.style.height = `${textarea.offsetHeight}px`;
+  }
+
+  // 预置编辑器专用粘贴保护：WPS WebView 的 clipboardData 可能为空或被截断，
+  // 以代理读取的系统剪贴板全文为准（仅当其不短于事件文本时才采用），阻止外层 handler 二次插入。
+  function attachProtectedPaste(textarea) {
+    if (!textarea || textarea.dataset.lingxiProtectedPaste === "1") return;
+    textarea.dataset.lingxiProtectedPaste = "1";
+    textarea.addEventListener("paste", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (typeof ev.stopImmediatePropagation === "function") ev.stopImmediatePropagation();
+      let fromEvent = "";
+      try { fromEvent = ev.clipboardData?.getData?.("text/plain") || ev.clipboardData?.getData?.("text") || ""; } catch (error) {}
+      const insert = (text) => {
+        if (!text) return;
+        const start = typeof textarea.selectionStart === "number" ? textarea.selectionStart : textarea.value.length;
+        const end = typeof textarea.selectionEnd === "number" ? textarea.selectionEnd : start;
+        textarea.value = textarea.value.slice(0, start) + text + textarea.value.slice(end);
+        const caret = start + text.length;
+        try { textarea.selectionStart = caret; textarea.selectionEnd = caret; } catch (error) {}
+        textarea.dispatchEvent(new Event("input", { bubbles: true }));
+      };
+      const url = window.WpsAiRuntime?.proxyUrl
+        ? window.WpsAiRuntime.proxyUrl("/clipboard/text")
+        : ((window.WpsAiRuntime?.proxyBase?.() || "http://127.0.0.1:3890") + "/clipboard/text");
+      fetch(url, { cache: "no-store" })
+        .then((res) => res.json().catch(() => ({})))
+        .then((json) => {
+          const fromProxy = json?.ok ? String(json.text || "") : "";
+          insert(fromProxy.length >= fromEvent.length ? fromProxy : fromEvent);
+        })
+        .catch(() => insert(fromEvent));
+    }, true);
+  }
+
   function attachRichSurface(textarea) {
     if (!textarea || textarea.dataset.lingxiRichSurface === "1") return null;
     textarea.dataset.lingxiRichSurface = "1";
-    const computed = window.getComputedStyle(textarea);
     const wrap = document.createElement("div");
     wrap.className = "lri-wrap";
     textarea.parentNode.insertBefore(wrap, textarea);
@@ -3083,14 +3132,13 @@
     const backdrop = document.createElement("div");
     backdrop.className = "lri-backdrop";
     backdrop.setAttribute("aria-hidden", "true");
-    for (const prop of ["fontFamily", "fontSize", "fontWeight", "lineHeight", "letterSpacing", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft"]) {
-      backdrop.style[prop] = computed[prop];
-    }
     wrap.insertBefore(backdrop, textarea);
     textarea.classList.add("lri-active");
     const entry = { textarea, backdrop };
     textarea.addEventListener("input", () => syncRichSurface(entry));
     textarea.addEventListener("scroll", () => syncRichSurface(entry), { passive: true });
+    window.addEventListener("resize", () => layoutRichSurface(entry), { passive: true });
+    layoutRichSurface(entry);
     syncRichSurface(entry);
     return entry;
   }
