@@ -2170,7 +2170,8 @@
     if (!document || !paragraphs || index > count) throw new Error(`当前文档没有 ${anchor}。`);
     const range = paragraphs.Item(index)?.Range;
     if (!range) throw new Error(`无法读取 ${anchor} 的位置。`);
-    // 只移动视口，绝不 Select：用户可点击定位，同时不改变 AI 的下一次写入落点。
+    // 用户主动点击锚点后，选中对应段落并滚动到可见位置，便于在文档中核对原文。
+    range.Select?.();
     const windowRef = application?.ActiveWindow;
     if (!windowRef?.ScrollIntoView) throw new Error("当前 WPS 窗口不支持视图定位。");
     windowRef.ScrollIntoView(range, true);

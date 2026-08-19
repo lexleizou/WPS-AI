@@ -14,5 +14,5 @@ assert.deepStrictEqual(Array.from(parse("见 §343 与 §842–§846，以及 §
 assert.deepStrictEqual(Array.from(parse("§0、§01、普通正文")), []);
 assert.deepStrictEqual(Array.from(parse("§7")), ["§7"]);
 assert.ok(source.includes("ScrollIntoView"), "anchor navigation must use view scrolling");
-assert.ok(!/function revealChatAnchor[\s\S]{0,160}\.Select\?\./.test(source), "anchor navigation must not select document text");
+assert.ok(/function revealChatAnchor[\s\S]*?range\.Select\?\.\(\)/.test(source), "anchor navigation must select the referenced document text");
 console.log("PASS chat anchor navigation");
