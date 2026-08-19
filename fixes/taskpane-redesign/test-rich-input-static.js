@@ -1,0 +1,11 @@
+"use strict";
+const assert = require("assert");
+const fs = require("fs");
+const js = fs.readFileSync(`${process.env.HOME}/.lingxi-ai/fixes/taskpane-redesign/lingxi-graphite-taskpane.js`, "utf8");
+const css = fs.readFileSync(`${process.env.HOME}/.lingxi-ai/fixes/taskpane-redesign/lingxi-graphite-taskpane.css`, "utf8");
+assert(js.includes("LINGXI_RICH_INPUT_SURFACE_V1"), "marker missing");
+assert(js.includes("attachRichSurface(input)"), "chatInput rich surface missing");
+assert(js.includes("buildRichToolbar(promptInput)") && js.includes("buildRichToolbar(experienceInput)"), "preset toolbars missing");
+assert(js.includes("attachRichSurface(promptInput)") && js.includes("attachRichSurface(experienceInput)"), "preset surfaces missing");
+assert(css.includes(".lri-backdrop") && css.includes("caret-color"), "surface styles missing");
+console.log("PASS rich input static wiring");

@@ -1462,3 +1462,44 @@ body.lingxi-graphite-v1 .lingxi-floating-copy-btn {
 }
 body.lingxi-graphite-v1 .lingxi-floating-copy-btn.visible { opacity: 1; pointer-events: auto; }
 body.lingxi-graphite-v1 .lingxi-floating-copy-btn:hover { color: var(--lg-primary); border-color: var(--lg-primary); }
+
+/* Rich input surface: transparent textarea text over a styled backdrop (LINGXI_RICH_INPUT_SURFACE_V1). */
+body.lingxi-graphite-v1 .lri-wrap { position: relative; width: 100%; }
+body.lingxi-graphite-v1 .lri-backdrop {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  color: var(--lg-text);
+  border: 1px solid transparent;
+}
+body.lingxi-graphite-v1 .lri-wrap > textarea.lri-active {
+  position: relative;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--lg-primary);
+}
+body.lingxi-graphite-v1 .lri-wrap > textarea.lri-active::selection { background: rgba(76, 139, 245, .28); color: transparent; }
+body.lingxi-graphite-v1 .lri-line { display: inline; }
+body.lingxi-graphite-v1 .lri-section { color: var(--lg-primary); font-weight: 600; }
+body.lingxi-graphite-v1 .lri-heading { font-weight: 700; }
+body.lingxi-graphite-v1 .lri-num { color: var(--lg-primary); font-weight: 600; }
+body.lingxi-graphite-v1 .lri-bold { font-weight: 700; }
+body.lingxi-graphite-v1 .lri-mark { background: rgba(250, 204, 21, .38); color: inherit; border-radius: 2px; }
+body.lingxi-graphite-v1 .lri-anchor { color: #2f9e44; font-weight: 600; border-bottom: 1px dotted #2f9e44; }
+body.lingxi-graphite-v1 .lri-toolbar { display: flex; gap: 4px; margin: 2px 0 4px; }
+body.lingxi-graphite-v1 .lri-tool {
+  min-width: 26px;
+  padding: 2px 7px;
+  border: 1px solid var(--lg-border);
+  border-radius: 5px;
+  background: var(--lg-bg-elevated);
+  color: var(--lg-text);
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
+}
+body.lingxi-graphite-v1 .lri-tool:hover { color: var(--lg-primary); border-color: var(--lg-primary); }

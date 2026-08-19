@@ -1598,7 +1598,7 @@
     promptInput.maxLength = 20000;
     promptInput.value = existing?.prompt || "";
     promptInput.placeholder = "写明角色、目标、边界、执行步骤和输出要求…";
-    promptLabel.append(promptText, promptInput);
+    promptLabel.append(promptText, buildRichToolbar(promptInput), promptInput);
 
     const experienceLabel = document.createElement("label");
     experienceLabel.className = "lingxi-prompt-field";
@@ -1614,8 +1614,10 @@
     experienceInput.value = candidate
       ? [oldExperience, `【${date} 复盘】\n${candidate}`].filter(Boolean).join("\n\n")
       : oldExperience;
-    experienceLabel.append(experienceText, experienceHint, experienceInput);
+    experienceLabel.append(experienceText, experienceHint, buildRichToolbar(experienceInput), experienceInput);
     body.append(nameLabel, promptLabel, experienceLabel);
+    attachRichSurface(promptInput);
+    attachRichSurface(experienceInput);
 
     const footer = createNode("lingxi-prompt-modal-footer");
     const left = createNode("lingxi-prompt-modal-secondary");
@@ -3027,6 +3029,162 @@
     installCodexOfficialDirectMigration();
   }
 
+  // LINGXI_RICH_INPUT_SURFACE_V1：轻量富文本背板。
+  // 设计约束：app.js 大量逻辑以 .value/selectionStart 操作 textarea，不能换成 contenteditable。
+  // 方案：textarea 文字设透明、caret 保留，背后叠一层同步渲染的富文本背板；
+  // 源数据始终是纯文本（**粗体**、【章节】、1. 编号、==高亮==、§/T 锚点标记），发给模型时无需转换。
+  function escapeRichHtml(text) {
+    return String(text || "").replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+  }
+
+  function renderRichInline(escaped) {
+    return escaped
+      .replace(/\*\*([^*\n]+)\*\*/g, '<strong class="lri-bold">$1</strong>')
+      .replace(/==([^=\n]+)==/g, '<mark class="lri-mark">$1</mark>')
+      .replace(/§([1-9]\d*)/g, '<span class="lri-anchor">§$1</span>')
+      .replace(/\bT([1-9]\d*)\b/g, '<span class="lri-anchor">T$1</span>');
+  }
+
+  function renderRichInputHtml(text) {
+    const html = String(text || "").split("\n").map((line) => {
+      const escaped = escapeRichHtml(line);
+      const section = /^(\s*)(【[^】]+】)(\s*)$/.exec(escaped);
+      if (section) return `<span class="lri-line lri-section">${section[1]}${renderRichInline(section[2])}${section[3]}</span>`;
+      const heading = /^(\s*)(#{1,3})\s+(.*)$/.exec(escaped);
+      if (heading) return `<span class="lri-line lri-heading">${heading[1]}<span class="lri-num">${heading[2]}</span> ${renderRichInline(heading[3])}</span>`;
+      const numbered = /^(\s*)((?:第)?[一二三四五六七八九十百零]+[、.．]|\d{1,2}[、.．)]|（[一二三四五六七八九十百零\d]+）)(.*)$/.exec(escaped);
+      if (numbered) return `<span class="lri-line">${numbered[1]}<span class="lri-num">${renderRichInline(numbered[2])}</span>${renderRichInline(numbered[3])}</span>`;
+      return `<span class="lri-line">${renderRichInline(escaped)}</span>`;
+    }).join("\n");
+    return html + "\n";
+  }
+
+  function syncRichSurface(entry) {
+    entry.backdrop.innerHTML = renderRichInputHtml(entry.textarea.value);
+    entry.backdrop.scrollTop = entry.textarea.scrollTop;
+    entry.backdrop.scrollLeft = entry.textarea.scrollLeft;
+  }
+
+  function attachRichSurface(textarea) {
+    if (!textarea || textarea.dataset.lingxiRichSurface === "1") return null;
+    textarea.dataset.lingxiRichSurface = "1";
+    const computed = window.getComputedStyle(textarea);
+    const wrap = document.createElement("div");
+    wrap.className = "lri-wrap";
+    textarea.parentNode.insertBefore(wrap, textarea);
+    wrap.appendChild(textarea);
+    const backdrop = document.createElement("div");
+    backdrop.className = "lri-backdrop";
+    backdrop.setAttribute("aria-hidden", "true");
+    for (const prop of ["fontFamily", "fontSize", "fontWeight", "lineHeight", "letterSpacing", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft"]) {
+      backdrop.style[prop] = computed[prop];
+    }
+    wrap.insertBefore(backdrop, textarea);
+    textarea.classList.add("lri-active");
+    const entry = { textarea, backdrop };
+    textarea.addEventListener("input", () => syncRichSurface(entry));
+    textarea.addEventListener("scroll", () => syncRichSurface(entry), { passive: true });
+    syncRichSurface(entry);
+    return entry;
+  }
+
+  function richTextareaSelection(textarea, transform) {
+    const start = typeof textarea.selectionStart === "number" ? textarea.selectionStart : textarea.value.length;
+    const end = typeof textarea.selectionEnd === "number" ? textarea.selectionEnd : start;
+    const result = transform(textarea.value, start, end);
+    if (!result) return;
+    textarea.value = result.value;
+    try {
+      textarea.selectionStart = result.selectionStart;
+      textarea.selectionEnd = result.selectionEnd;
+    } catch (error) {}
+    textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    textarea.focus();
+  }
+
+  function wrapRichSelection(textarea, before, after) {
+    richTextareaSelection(textarea, (value, start, end) => {
+      const selected = value.slice(start, end) || "文本";
+      const inserted = before + selected + after;
+      return {
+        value: value.slice(0, start) + inserted + value.slice(end),
+        selectionStart: start + before.length,
+        selectionEnd: start + before.length + selected.length
+      };
+    });
+  }
+
+  function toggleRichSectionLines(textarea) {
+    richTextareaSelection(textarea, (value, start, end) => {
+      const lineStart = value.lastIndexOf("\n", start - 1) + 1;
+      const lineEndIndex = value.indexOf("\n", end);
+      const lineEnd = lineEndIndex < 0 ? value.length : lineEndIndex;
+      const block = value.slice(lineStart, lineEnd);
+      const lines = block.split("\n");
+      const allSection = lines.every((line) => !line.trim() || /^\s*【[^】]+】\s*$/.test(line));
+      const next = lines.map((line) => {
+        if (!line.trim()) return line;
+        if (allSection) return line.replace(/^\s*【([^】]+)】\s*$/, (m, inner) => inner);
+        return /^\s*【[^】]+】\s*$/.test(line) ? line : `【${line.trim()}】`;
+      }).join("\n");
+      return { value: value.slice(0, lineStart) + next + value.slice(lineEnd), selectionStart: lineStart, selectionEnd: lineStart + next.length };
+    });
+  }
+
+  function numberRichLines(textarea) {
+    richTextareaSelection(textarea, (value, start, end) => {
+      const lineStart = value.lastIndexOf("\n", start - 1) + 1;
+      const lineEndIndex = value.indexOf("\n", end);
+      const lineEnd = lineEndIndex < 0 ? value.length : lineEndIndex;
+      const lines = value.slice(lineStart, lineEnd).split("\n");
+      let n = 0;
+      const next = lines.map((line) => {
+        if (!line.trim()) return line;
+        const stripped = line.replace(/^\s*\d{1,2}[、.．)]\s*/, "");
+        n += 1;
+        return `${n}. ${stripped}`;
+      }).join("\n");
+      return { value: value.slice(0, lineStart) + next + value.slice(lineEnd), selectionStart: lineStart, selectionEnd: lineStart + next.length };
+    });
+  }
+
+  function insertRichText(textarea, snippet) {
+    richTextareaSelection(textarea, (value, start, end) => ({
+      value: value.slice(0, start) + snippet + value.slice(end),
+      selectionStart: start + snippet.length,
+      selectionEnd: start + snippet.length
+    }));
+  }
+
+  function buildRichToolbar(textarea) {
+    const bar = document.createElement("div");
+    bar.className = "lri-toolbar";
+    const buttons = [
+      { label: "B", title: "粗体：用 **…** 包裹选中文字", run: () => wrapRichSelection(textarea, "**", "**") },
+      { label: "==", title: "高亮：用 ==…== 包裹选中文字", run: () => wrapRichSelection(textarea, "==", "==") },
+      { label: "【节】", title: "章节标题：选中行切换为 【…】 章节行", run: () => toggleRichSectionLines(textarea) },
+      { label: "1.", title: "自动编号：选中行按 1. 2. 3. 重新编号", run: () => numberRichLines(textarea) },
+      { label: "§", title: "插入段落锚点符号", run: () => insertRichText(textarea, "§") }
+    ];
+    buttons.forEach(({ label, title, run }) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "lri-tool";
+      button.title = title;
+      button.setAttribute("aria-label", title);
+      button.textContent = label;
+      button.addEventListener("mousedown", (event) => event.preventDefault()); // 不抢走 textarea 选区
+      button.addEventListener("click", run);
+      bar.appendChild(button);
+    });
+    return bar;
+  }
+
+  function enhanceRichInputSurfaces() {
+    const input = byId("chatInput");
+    if (input) attachRichSurface(input);
+  }
+
   function init() {
     if (!isMainTaskPane() || !document.body || !document.querySelector(".app-shell")) return;
     if (document.body.dataset.lingxiGraphiteV1 === "1") return;
@@ -3068,6 +3226,7 @@
     installAgentReferenceSendBridge();
     installChatCopyShortcut();
     installMacPasteIsolation();
+    enhanceRichInputSurfaces();
     enhanceAccessibility();
     installLiteLlmSettingsEnhancements();
 
