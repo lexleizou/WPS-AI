@@ -1825,7 +1825,18 @@
     const doc = await ensureDocument();
     const out = path || derivePdfPath(doc.FullName);
     if (!out) throw new Error("文档尚未保存到磁盘，请先保存或显式传 path。");
-    doc.ExportAsFixedFormat(out, 17 /*wdExportFormatPDF*/);
+    // 静默导出：自动化路径（如改完自动审核的后台复核）不能被 WPS 的保存/确认弹窗打断。
+    // wdAlertsNone=0，导出按内存内容走、不问是否保存，完事恢复原设置。
+    let app = null;
+    let prevAlerts = null;
+    try { app = doc.Application; } catch (e) {}
+    try { prevAlerts = app ? app.DisplayAlerts : null; } catch (e) {}
+    try { if (app) app.DisplayAlerts = 0; } catch (e) {}
+    try {
+      doc.ExportAsFixedFormat(out, 17 /*wdExportFormatPDF*/);
+    } finally {
+      try { if (app && prevAlerts != null) app.DisplayAlerts = prevAlerts; } catch (e) {}
+    }
     return { path: out, applied: true };
   }
 
