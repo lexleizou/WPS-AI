@@ -3164,6 +3164,44 @@
     }, true);
   }
 
+  // 原生 input 事件捕获不到 app.js 的 textarea.value = "" / 预置替换。
+  // 在单个 textarea 实例上代理 value accessor，确保程序赋值后背板也同步。
+  function observeRichTextareaValue(entry) {
+    const textarea = entry?.textarea;
+    if (!textarea || textarea.dataset.lingxiRichValueObserver === "1") return;
+    textarea.dataset.lingxiRichValueObserver = "1";
+    let owner = textarea;
+    let descriptor = null;
+    while (owner && !descriptor) {
+      descriptor = Object.getOwnPropertyDescriptor(owner, "value");
+      owner = Object.getPrototypeOf(owner);
+    }
+    if (descriptor?.get && descriptor?.set) {
+      try {
+        Object.defineProperty(textarea, "value", {
+          configurable: true,
+          enumerable: descriptor.enumerable,
+          get() { return descriptor.get.call(this); },
+          set(next) {
+            descriptor.set.call(this, next);
+            Promise.resolve().then(() => {
+              if (entry.textarea?.isConnected) syncRichSurface(entry);
+            });
+          }
+        });
+        return;
+      } catch (error) {}
+    }
+    // 极旧 WebView 不允许覆盖原生 accessor 时的低频兜底；弹窗移除后自动停止。
+    let lastValue = textarea.value;
+    const timer = window.setInterval(() => {
+      if (!textarea.isConnected) { window.clearInterval(timer); return; }
+      if (textarea.value === lastValue) return;
+      lastValue = textarea.value;
+      syncRichSurface(entry);
+    }, 120);
+  }
+
   function attachRichSurface(textarea) {
     if (!textarea || textarea.dataset.lingxiRichSurface === "1") return null;
     textarea.dataset.lingxiRichSurface = "1";
@@ -3198,6 +3236,7 @@
       syncRichSurface(entry);
     });
     window.addEventListener("resize", () => layoutRichSurface(entry), { passive: true });
+    observeRichTextareaValue(entry);
     layoutRichSurface(entry);
     syncRichSurface(entry);
     return entry;

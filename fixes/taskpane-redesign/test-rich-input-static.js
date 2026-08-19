@@ -21,3 +21,8 @@ assert(js.includes('style.setProperty("-webkit-text-fill-color", "transparent", 
 assert(js.includes('addEventListener("compositionstart"') && js.includes('addEventListener("compositionend"'), "IME composition bridge missing");
 assert(/function syncRichSurface\(entry\) \{\s*\/\/[\s\S]{0,160}layoutRichSurface\(entry\)/.test(js), "rich backdrop must relayout during input sync");
 console.log("PASS rich surface native glyph suppression and IME fallback");
+assert(js.includes("observeRichTextareaValue"), "programmatic textarea value observer missing");
+assert(js.includes('Object.defineProperty(textarea, "value"'), "textarea value accessor bridge missing");
+assert(js.includes("Promise.resolve().then"), "programmatic value sync must run after native setter");
+assert(js.includes("observeRichTextareaValue(entry)"), "value observer not attached to rich surface");
+console.log("PASS programmatic textarea clear sync");

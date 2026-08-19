@@ -32,6 +32,14 @@ if (!entry.backdrop.innerHTML.includes("lri-section")) throw new Error("backdrop
 if (!ta.classList.contains("lri-active")) throw new Error("textarea not transparent-active");
 if (ta.parentNode.className !== "lri-wrap") throw new Error("wrapper missing");
 
+// app.js 发送完成后直接 chatInput.value = ""，不会触发 input；value accessor 必须同步背板。
+ta.value = "程序赋值的新内容";
+await Promise.resolve();
+if (!entry.backdrop.textContent.includes("程序赋值的新内容")) throw new Error("programmatic value update not synced");
+ta.value = "";
+await Promise.resolve();
+if (entry.backdrop.textContent.includes("程序赋值的新内容")) throw new Error("programmatic clear left stale backdrop text");
+
 // 工具：编号
 ta.value = "第一行\n第二行";
 ta.selectionStart = 0; ta.selectionEnd = ta.value.length;
