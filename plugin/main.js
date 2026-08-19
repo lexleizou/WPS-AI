@@ -170,6 +170,7 @@
     "js/tools/todos.js",
     "js/tools/spreadsheet.js",
     "js/tools/writer.js",
+    "js/tools/writer-table-safe.js", // LINGXI_WRITER_TABLE_SAFE_TOOLS_V1_LOAD
     "js/tools/writer-paragraph-cell.js", // LINGXI_WRITER_PARAGRAPH_CELL_TOOLS_V1_TOOLS
     "js/tools/writer-section-break.js", // LINGXI_WRITER_SECTION_BREAK_REMOVAL_V1_TOOLS
     "js/tools/writer-inspector.js", // LINGXI_WRITER_INSPECTOR_PHASE1_V1_TOOLS
