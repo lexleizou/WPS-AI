@@ -2045,14 +2045,13 @@
 
   function migrateCodexToOfficialDirect() {
     const registry = window.WpsAiProviderRegistry;
-    if (!registry?.loadSettings || !registry?.saveSettings || !registry?.encodeActiveChatModel) return { ready: false };
+    if (!registry?.loadSettings || !registry?.saveSettings) return { ready: false };
     const settings = registry.loadSettings();
     const codex = (settings.chatProviders || []).find((provider) => provider?.type === "codex");
     if (!codex) return { ready: false };
     let changed = false;
+    // 只保证官方 Codex Provider 可用，不预设/覆盖当前模型；下次打开由已持久化的选择恢复。
     if (!codex.enabled) { codex.enabled = true; changed = true; }
-    const desired = registry.encodeActiveChatModel(codex.id, codex.defaultModel || "");
-    if (settings.activeChatModel !== desired) { settings.activeChatModel = desired; changed = true; }
     if (changed) {
       registry.saveSettings(settings);
       try { window.dispatchEvent(new StorageEvent("storage", { key: "wps_ai_provider_settings" })); } catch (_) {}
