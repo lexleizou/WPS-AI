@@ -1184,7 +1184,9 @@
   function installContextUsage(ring) {
     if (!ring) return;
     const usage = window.WpsAiTokenUsage;
-    const estimateLimit = 128000;
+    const contextLimits = new Map();
+    const contextLimitChecks = new Set();
+    let contextMetadataLoading = null;
     let latestInput = 0;
     let tooltip = byId("lingxiContextTooltip");
 
@@ -1197,6 +1199,76 @@
     }
     ring.removeAttribute("title");
     ring.setAttribute("aria-describedby", tooltip.id);
+
+    function activeModelIdentity() {
+      const registry = window.WpsAiProviderRegistry;
+      const settings = registry?.loadSettings?.();
+      const active = registry?.parseActiveChatModel?.(settings?.activeChatModel || "") || {};
+      const select = byId("modelSelect");
+      const option = select?.options?.[select.selectedIndex];
+      const providerId = String(active.providerId || option?.dataset?.providerId || "").trim();
+      const modelId = String(active.modelId || select?.value || "").trim();
+      const provider = (settings?.chatProviders || []).find((item) => item?.id === providerId) || null;
+      return { providerId, modelId, provider };
+    }
+
+    function modelKey(providerId, modelId) { return `${providerId || "*"}::${modelId || ""}`; }
+
+    function rememberContextLimit(providerId, modelId, value, source, overwrite = false) {
+      const tokens = Math.floor(Number(value) || 0);
+      if (!modelId || !Number.isFinite(tokens) || tokens <= 0) return;
+      const key = modelKey(providerId, modelId);
+      if (!overwrite && contextLimits.has(key)) return;
+      contextLimits.set(key, { tokens, source });
+    }
+
+    function readContextLimit(identity) {
+      if (!identity?.modelId) return null;
+      return contextLimits.get(modelKey(identity.providerId, identity.modelId))
+        || contextLimits.get(modelKey("", identity.modelId))
+        || null;
+    }
+
+    function isLocalLiteLlm(provider) {
+      const baseUrl = String(provider?.baseUrl || "").replace(/\/$/, "");
+      return /^https?:\/\/(?:127\.0\.0\.1|localhost):4000\/v1$/i.test(baseUrl);
+    }
+
+    async function loadLiteLlmContextLimits(identity) {
+      if (!isLocalLiteLlm(identity.provider)) return;
+      const response = await fetch(getLiteLlmApiUrl("/service/litellm/models"), { cache: "no-store" });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload?.ok) return;
+      (Array.isArray(payload.models) ? payload.models : []).forEach((model) => {
+        rememberContextLimit(identity.providerId, String(model?.id || ""), model?.maxInputTokens, "LiteLLM 模型目录", true);
+      });
+    }
+
+    async function loadCatalogContextLimits() {
+      const response = await fetch(getLiteLlmApiUrl("/models-catalog"), { cache: "no-store" });
+      if (!response.ok) return;
+      const catalog = await response.json().catch(() => null);
+      if (!catalog || typeof catalog !== "object") return;
+      Object.values(catalog).forEach((provider) => {
+        const models = provider?.models;
+        if (!models || typeof models !== "object") return;
+        Object.entries(models).forEach(([key, model]) => {
+          const id = String(model?.id || key || "").trim();
+          const limit = model?.limit?.context;
+          rememberContextLimit("", id, limit, "models.dev 目录");
+          const bare = id.split("/").pop();
+          if (bare && bare !== id) rememberContextLimit("", bare, limit, "models.dev 目录");
+        });
+      });
+    }
+
+    function resolveActiveModelContextLimit() {
+      const identity = activeModelIdentity();
+      const key = modelKey(identity.providerId, identity.modelId);
+      if (!identity.modelId || readContextLimit(identity) || contextLimitChecks.has(key) || contextMetadataLoading) return;
+      contextMetadataLoading = Promise.allSettled([loadLiteLlmContextLimits(identity), loadCatalogContextLimits()])
+        .finally(() => { contextLimitChecks.add(key); contextMetadataLoading = null; refresh(); });
+    }
 
     function positionTooltip() {
       if (tooltip.hidden) return;
@@ -1234,6 +1306,7 @@
       ring.addEventListener("focus", showTooltip);
       ring.addEventListener("blur", hideTooltip);
       ring.addEventListener("keydown", (event) => { if (event.key === "Escape") hideTooltip(); });
+      byId("modelSelect")?.addEventListener("change", () => window.setTimeout(refresh, 0));
       window.addEventListener("resize", positionTooltip, { passive: true });
       document.addEventListener("scroll", positionTooltip, { passive: true, capture: true });
     }
@@ -1241,12 +1314,17 @@
     function refresh() {
       const session = usage?.getSession?.() || { input: 0, output: 0, total: 0, calls: 0 };
       const input = latestInput || Number(session.input) || 0;
-      const pct = Math.max(0, Math.min(100, Math.round(input / estimateLimit * 100)));
       const total = Number(session.total) || 0;
+      const identity = activeModelIdentity();
+      const contextLimit = readContextLimit(identity);
+      if (!contextLimit) resolveActiveModelContextLimit();
+      const limit = Number(contextLimit?.tokens) || 0;
+      const pct = limit > 0 ? Math.max(0, Math.min(100, Math.round(input / limit * 100))) : 0;
       ring.style.setProperty("--lg-context-pct", `${pct}%`);
-      const tip = input > 0
-        ? `最近请求输入：${formatTokens(input)} / ${formatTokens(estimateLimit)} token（${pct}%，按 128K 估算）· 本会话累计：${formatTokens(total)} token`
-        : "最近请求输入：0 / 128,000 token（0%，等待下一次请求返回实际用量）";
+      const modelName = identity.modelId ? `当前模型 ${identity.modelId}` : "当前模型";
+      const tip = limit > 0
+        ? `最近请求输入：${formatTokens(input)} / ${formatTokens(limit)} token（${pct}%，${contextLimit.source}）· ${modelName} · 本会话累计：${formatTokens(total)} token`
+        : `${modelName} 的模型上下文上限未提供；不显示估算比例。最近请求输入：${formatTokens(input)} token · 本会话累计：${formatTokens(total)} token`;
       ring.dataset.tooltip = tip;
       ring.setAttribute("aria-label", tip);
       tooltip.textContent = tip;

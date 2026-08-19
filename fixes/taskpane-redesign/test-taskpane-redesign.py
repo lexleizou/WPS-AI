@@ -55,7 +55,7 @@ check("agent reference one-turn request bridge", all(token in js for token in ["
 check("agent reference delivery stays visible until injected", all(token in reference_bridge for token in ["引用已就绪，正在附加到本轮请求", "引用已附加到本轮请求", "引用已保留，可修改后再次发送", "getAgentReferenceState()?.clear()"]))
 check("model label preserves business rendering", "label.textContent = concise" not in js and "不覆盖可见文案" in js)
 check("composer model control has readable width", all(token in css for token in ["flex: 0 1 300px", "min-width: 220px", "max-width: 320px"]))
-check("context usage tooltip", "installContextUsage" in js and "lingxiContextTooltip" in js and ".lingxi-context-tooltip" in css and "position: fixed" in css and "--lg-context-pct" in css and "128K" in js and "ring.removeAttribute(\"title\")" in js)
+check("context usage tooltip", "installContextUsage" in js and "lingxiContextTooltip" in js and ".lingxi-context-tooltip" in css and "position: fixed" in css and "--lg-context-pct" in css and "resolveActiveModelContextLimit" in js and "/service/litellm/models" in js and "/models-catalog" in js and "模型上下文上限未提供" in js and "ring.removeAttribute(\"title\")" in js)
 check("dark popup surfaces", ".thinking-menu" in css and ".chat-model-override-picker" in css and "--bg: var(--lg-bg-elevated)" in css)
 check("popup viewport clamp", "clampFloatingPopup" in js and "installFloatingPopupGuard" in js and "viewportWidth - width - margin" in js and "max-width: calc(100vw - 16px)" in css)
 check("model popup exposes long identifiers", all(token in css for token in ["max-width: 380px", "max-height: min(360px, 60vh)", "overflow-y: auto", "model-select-popup::-webkit-scrollbar"]))
