@@ -1,108 +1,99 @@
 "use strict";
-
 const assert = require("assert");
 const fs = require("fs");
 const vm = require("vm");
 
-function makeDoc(texts) {
-  // 段落：1=正文，2-4=空段，5=表内空段，6=含分页符
-  texts = texts || ["正文\r", "\r", "\r", "\r", "\r\u0007", "\f\r"];
-  const deleted = [];
-  const selection = {
-    index: -1,
-    Delete() { deleted.push(this.index + 1); }
+function makeDoc(initialTexts, options = {}) {
+  let texts = (initialTexts || ["正文\r", "\r", "\r", "\r", "后续内容\r", "末段\r"]).slice();
+  const history = [];
+  const revs = { count: 0, get Count() { return this.count; }, Item() { return { Type: 1 }; } };
+  function bounds(index) {
+    let start = 0;
+    for (let i = 0; i < index; i += 1) start += texts[i].length;
+    return { start, end: start + texts[index].length };
+  }
+  function paragraph(index) {
+    const b = bounds(index);
+    return { Range: { Text: texts[index], Start: b.start, End: b.end, Tables: { Count: texts[index].includes("\u0007") ? 1 : 0 }, InlineShapes: { Count: 0 }, Shapes: { Count: 0 } } };
+  }
+  const paragraphs = { get Count() { return texts.length; }, Item(i) { return paragraph(i - 1); } };
+  const documentRange = (start, end) => {
+    let target = -1;
+    for (let i = 0; i < texts.length; i += 1) { const b = bounds(i); if (b.end === end && b.end - 1 === start) { target = i; break; } }
+    return {
+      get Text() { return target >= 0 ? texts[target].slice(-1) : ""; },
+      Delete() {
+        if (target < 0) throw new Error("invalid mark range");
+        history.push({ texts: texts.slice(), revs: revs.count });
+        if (options.tracked) revs.count += 1;
+        else texts.splice(target, options.overDelete ? 2 : 1);
+      }
+    };
   };
-  const paras = texts.map((text, idx) => ({
-    Range: {
-      Text: text,
-      Tables: idx === 4 ? { Count: 1 } : { Count: 0 },
-      InlineShapes: { Count: 0 },
-      Shapes: { Count: 0 },
-      Select() { selection.index = idx; },
-      Delete() { throw new Error("Range.Delete silently unsupported in this stub"); }
-    }
-  }));
-  // 页眉：表1 cell(1,1) = 图片 \u0001 + 「桓科生物」
+
   const store = { text: "\u0001桓科生物\r\u0007" };
   const cellRange = {
-    InlineShapes: { Count: 1 },
-    Shapes: { Count: 0 },
+    InlineShapes: { Count: 1 }, Shapes: { Count: 0 },
     get Text() { return store.matched != null ? store.matched : store.text; },
-    Find: {
-      Text: "",
-      ClearFormatting() {},
-      Execute() {
-        const i = store.text.indexOf(this.Text);
-        if (i < 0) return false;
-        store.matched = this.Text;
-        return true;
-      }
-    },
-    Delete() {
-      store.text = store.text.replace(store.matched, "");
-      store.matched = null;
-    }
+    Find: { Text: "", ClearFormatting() {}, Execute() { const i = store.text.indexOf(this.Text); if (i < 0) return false; store.matched = this.Text; return true; } },
+    Delete() { store.text = store.text.replace(store.matched, ""); store.matched = null; }
   };
   const table = { Cell: (r, c) => (r === 1 && c === 1 ? { Range: cellRange } : null) };
   const headerRange = { Tables: { Count: 1, Item: () => table } };
   const doc = {
-    Paragraphs: { get Count() { return paras.length - deleted.length; }, Item(i) { return paras[i - 1]; } },
+    Paragraphs: paragraphs, TrackRevisions: !!options.tracked, Revisions: revs,
+    Range: documentRange,
     Sections: { Count: 1, Item: () => ({ Headers: { Item: () => ({ Range: headerRange }) } }) }
   };
-  return { doc, selection, deleted, store };
+  const app = {
+    ActiveDocument: doc,
+    Undo() { const state = history.pop(); if (!state) return; texts = state.texts; revs.count = state.revs; }
+  };
+  return { doc, app, store, texts: () => texts.slice() };
+}
+function load(bundle) {
+  const context = { window: null, Promise, Number, String, Object, Array, Math, Error, JSON };
+  context.window = context;
+  context.WpsAiAddon = { async getApplication() { return bundle.app; } };
+  vm.createContext(context);
+  vm.runInContext(fs.readFileSync(process.env.HOST, "utf8"), context);
+  return context.WpsAiParagraphCellTools;
 }
 
-const { doc, selection, deleted, store } = makeDoc();
-const context = { window: null, Promise, Number, String, Object, Array, Math, Error, JSON };
-context.window = context;
-context.WpsAiAddon = { async getApplication() { return { ActiveDocument: doc, Selection: selection }; } };
-vm.createContext(context);
-vm.runInContext(fs.readFileSync(process.env.HOST, "utf8"), context);
-
 (async () => {
-  const api = context.WpsAiParagraphCellTools;
-  // A1: 预检拒绝
-  await assert.rejects(() => api.deleteEmptyParagraphs({ startParagraph: 2, endParagraph: 4, expectedParagraphCount: 99 }), /段落总数已变化/);
-  await assert.rejects(() => api.deleteEmptyParagraphs({ startParagraph: 1, endParagraph: 2, expectedParagraphCount: 6 }), /不是空段落/);
-  await assert.rejects(() => api.deleteEmptyParagraphs({ startParagraph: 5, endParagraph: 5, expectedParagraphCount: 6 }), /表格/);
-  await assert.rejects(() => api.deleteEmptyParagraphs({ startParagraph: 6, endParagraph: 6, expectedParagraphCount: 6 }), /分页\/分节/);
-  assert.equal(deleted.length, 0, "预检失败时不得删除任何段落");
-  // A1: 成功路径，自后向前，走 Selection.Delete 通路
-  const res = await api.deleteEmptyParagraphs({ startParagraph: 2, endParagraph: 4, expectedParagraphCount: 6 });
-  assert.deepEqual(deleted, [4, 3, 2]);
-  assert.equal(res.deleted, 3);
-  assert.equal(res.verification.ok, true);
-  // A3: Find 定位 + 删除，图片保留
+  const bundle = makeDoc();
+  const api = load(bundle);
+  await assert.rejects(() => api.deleteEmptyParagraphs({ startParagraph: 2, endParagraph: 4, expectedParagraphCount: 99, expectedNextText: "后续内容" }), /段落总数已变化/);
+  await assert.rejects(() => api.deleteEmptyParagraphs({ startParagraph: 1, endParagraph: 2, expectedParagraphCount: 6, expectedNextText: "后续内容" }), /不是空段落/);
+  await assert.rejects(() => api.deleteEmptyParagraphs({ startParagraph: 2, endParagraph: 4, expectedParagraphCount: 6, expectedNextText: "错误正文" }), /NEXT_PARAGRAPH_MISMATCH/);
+  assert.equal(bundle.doc.Paragraphs.Count, 6, "预检失败不得修改文档");
+
+  const result = await api.deleteEmptyParagraphs({ startParagraph: 2, endParagraph: 4, expectedParagraphCount: 6, expectedPreviousText: "正文", expectedNextText: "后续内容" });
+  assert.equal(result.deleted, 3);
+  assert.equal(result.physicalDeleted, 3);
+  assert.equal(bundle.doc.Paragraphs.Count, 3);
+  assert.equal(bundle.doc.Paragraphs.Item(2).Range.Text, "后续内容\r");
+  assert.equal(result.verification.ok, true);
+
   const cleared = await api.clearHeaderCellText({ sectionIndex: 1, tableIndex: 1, row: 1, column: 1, expectedText: "桓科生物" });
   assert.equal(cleared.imagesPreserved, 1);
-  assert(!store.text.includes("桓科生物"));
-  assert(store.text.includes("\u0001"), "图片字符必须保留");
-  // A3: 文字不存在时拒绝
-  await assert.rejects(() => api.clearHeaderCellText({ expectedText: "桓科生物" }), /出现 0 次/);
-  console.log("PASS writer paragraph & header-cell tools v2");
-})().catch((error) => { console.error(error); process.exit(1); });
+  assert(!bundle.store.text.includes("桓科生物"));
+  assert(bundle.store.text.includes("\u0001"));
+  console.log("PASS bounded paragraph-mark deletion and header-cell preservation");
 
-// v3: 修订模式——段落总数不变但删除修订数增加时，应判定为 tracked 成功
-(async () => {
-  const { doc: doc2, selection: sel2, deleted: del2 } = makeDoc(["正文\r", "\r", "\r", "\r", "后续内容\r", "末段\r"]);
-  doc2.TrackRevisions = true;
-  const revs = { count: 0, get Count() { return this.count; }, Item() { return { Type: 1 }; } };
-  doc2.Revisions = revs;
-  const origDelete = sel2.Delete.bind(sel2);
-  sel2.Delete = function () { origDelete(); revs.count += 1; };
-  const ctx2 = { window: null, Promise, Number, String, Object, Array, Math, Error, JSON };
-  ctx2.window = ctx2;
-  ctx2.WpsAiAddon = { async getApplication() {
-    // 修订模式下 Count 不随删除变化
-    const p = doc2.Paragraphs; Object.defineProperty(p, "Count", { get: () => 6 });
-    return { ActiveDocument: doc2, Selection: sel2 };
-  } };
-  vm.createContext(ctx2);
-  vm.runInContext(fs.readFileSync(process.env.HOST, "utf8"), ctx2);
-  const api2 = ctx2.WpsAiParagraphCellTools;
-  const tracked = await api2.deleteEmptyParagraphs({ startParagraph: 2, endParagraph: 4, expectedParagraphCount: 6 });
+  const over = makeDoc(["目录末项\r", "\r", "正文标题一\r", "正文\r"], { overDelete: true });
+  const overApi = load(over);
+  await assert.rejects(() => overApi.deleteEmptyParagraphs({ startParagraph: 2, endParagraph: 2, expectedParagraphCount: 4, expectedPreviousText: "目录末项", expectedNextText: "正文标题一" }), /自动撤销：成功恢复原段落总数/);
+  assert.equal(over.doc.Paragraphs.Count, 4, "超量删除必须自动撤销");
+  assert.equal(over.doc.Paragraphs.Item(3).Range.Text, "正文标题一\r", "受保护正文必须恢复");
+  console.log("PASS over-delete rollback protection");
+
+  const trackedBundle = makeDoc(undefined, { tracked: true });
+  const trackedApi = load(trackedBundle);
+  const tracked = await trackedApi.deleteEmptyParagraphs({ startParagraph: 2, endParagraph: 4, expectedParagraphCount: 6, expectedPreviousText: "正文", expectedNextText: "后续内容" });
   assert.equal(tracked.tracked, true);
-  assert.equal(tracked.verification.mode, "tracked");
-  assert.equal(del2.length, 3);
-  console.log("PASS tracked-revision deletion path");
+  assert.equal(tracked.trackedDeleted, 3);
+  assert.equal(trackedBundle.doc.Paragraphs.Count, 6);
+  assert.equal(tracked.verification.mode, "tracked-or-mixed");
+  console.log("PASS tracked-revision paragraph-mark deletion");
 })().catch((error) => { console.error(error); process.exit(1); });

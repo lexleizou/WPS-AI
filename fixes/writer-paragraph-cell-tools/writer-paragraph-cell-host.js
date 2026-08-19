@@ -28,84 +28,116 @@
     return range;
   }
 
+  function normalizedParagraphText(paragraph) {
+    return rawText(paragraph?.Range).replace(/[\r\n\v\u0007]+/g, " ").replace(/\s+/g, " ").trim();
+  }
+
   async function deleteEmptyParagraphs(options = {}) {
     const start = Math.floor(Number(options.startParagraph));
     const end = Math.floor(Number(options.endParagraph));
     const expectedCount = Math.floor(Number(options.expectedParagraphCount));
+    const expectedNextText = String(options.expectedNextText || "").replace(/\s+/g, " ").trim();
+    const expectedPreviousText = String(options.expectedPreviousText || "").replace(/\s+/g, " ").trim();
     if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < start) {
       throw new Error("startParagraph/endParagraph 必须是有效的段落锚点区间（1 ≤ start ≤ end）。");
     }
+    const requested = end - start + 1;
+    if (requested > 12) throw new Error(`EMPTY_PARAGRAPH_DELETE_LIMIT：单次最多删除 12 个空段，当前请求 ${requested} 个。请拆分并重新读取地图。`);
     if (!Number.isInteger(expectedCount) || expectedCount < 1) throw new Error("expectedParagraphCount 必须是当前文档段落总数。");
+    if (expectedNextText.length < 4) throw new Error("expectedNextText 至少 4 个字符：必须提供空段之后首个正文/标题的地图原文，用于防止越界删除正文。");
 
     const { application, document } = await getDocument();
-    const paragraphs = document.Paragraphs || document.Content?.Paragraphs;
+    const getParagraphs = () => document.Paragraphs || document.Content?.Paragraphs;
+    let paragraphs = getParagraphs();
     const before = countOf(paragraphs);
     if (!paragraphs || before !== expectedCount) throw new Error(`段落总数已变化：当前 ${before}，预期 ${expectedCount}。请先用 wps_get_document_map 重新核对锚点。`);
-    if (end > before) throw new Error(`当前文档只有 ${before} 个段落，没有 §${end}。`);
+    if (end >= before) throw new Error(`§${end} 后没有可保护的正文段落；拒绝删除文档末尾未知范围。`);
 
-    // 全部预检通过后才开始删除；任何一个段落不合格都不动文档。
     for (let i = start; i <= end; i += 1) assertSimpleEmptyParagraph(paragraphs.Item(i), `§${i}`);
+    const nextTextBefore = normalizedParagraphText(paragraphs.Item(end + 1));
+    if (!nextTextBefore.startsWith(expectedNextText)) {
+      throw new Error(`NEXT_PARAGRAPH_MISMATCH：§${end + 1} 当前为“${nextTextBefore.slice(0, 80)}”，与 expectedNextText 不符；未删除。`);
+    }
+    const previousTextBefore = start > 1 ? normalizedParagraphText(paragraphs.Item(start - 1)) : "";
+    if (expectedPreviousText && !previousTextBefore.startsWith(expectedPreviousText)) {
+      throw new Error(`PREVIOUS_PARAGRAPH_MISMATCH：§${start - 1} 当前为“${previousTextBefore.slice(0, 80)}”，与 expectedPreviousText 不符；未删除。`);
+    }
 
-    // 邻居签名：删除成功后，原 §end+1 的内容应落在 §start 上；比 Count 更可靠（WPS 的 Count 可能不刷新）。
-    const signatureOf = (index) => {
-      if (index < 1 || index > before) return null;
-      try { return visibleText(paragraphs.Item(index)?.Range).slice(0, 40); } catch (error) { return null; }
-    };
-    const tailSignature = signatureOf(end + 1);
-    // 修订模式：删除会记为删除修订，段落暂时留在文档里（总数不变），接受修订后才消失。
     const tracked = trackRevisionsOn(document);
-    const deleteRevisionsBefore = tracked ? deleteRevisionCount(document) : 0;
-
-    // 自后向前删除，保持前序锚点在删除过程中仍然有效。
-    // WPS macOS JSAPI 的 Range.Delete() 对段落范围可能静默无操作；优先用 Select+Selection.Delete（主 writer host 已验证的通路）。
-    for (let i = end; i >= start; i -= 1) {
-      const range = paragraphs.Item(i)?.Range;
-      if (!range) throw new Error(`无法读取 §${i}，已中止。已删除的段落可用 Ctrl+Z 恢复。`);
-      let done = false;
-      try {
-        if (typeof range.Select === "function" && application?.Selection) {
-          range.Select();
-          application.Selection.Delete();
-          done = true;
-        }
-      } catch (error) { done = false; }
-      if (!done) { try { range.Delete?.(); done = true; } catch (error) { done = false; } }
-      if (!done) { try { range.Text = ""; } catch (error) { throw new Error(`当前 WPS 版本无法删除 §${i}。已删除的段落可用 Ctrl+Z 恢复。`); } }
-    }
-
-    const paragraphsAfter = countOf(document.Paragraphs || document.Content?.Paragraphs);
-    const removed = end - start + 1;
-    const countOk = paragraphsAfter === before - removed;
-    let shiftedSignature = null;
-    try { shiftedSignature = visibleText((document.Paragraphs || document.Content?.Paragraphs).Item(start)?.Range).slice(0, 40); } catch (error) {}
-    // 空签名（后邻也是空段/不可读）无法作为证据，避免空串恒等造成误判。
-    const neighborOk = !tailSignature ? false : shiftedSignature === tailSignature;
-    if (!countOk && !neighborOk && tracked) {
-      const deleteRevisionsAfter = deleteRevisionCount(document);
-      if (deleteRevisionsAfter >= deleteRevisionsBefore + removed) {
-        return {
-          deleted: removed,
-          anchors: `§${start}–§${end}`,
-          paragraphsBefore: before,
-          paragraphsAfter,
-          tracked: true,
-          note: "修订模式开启：已按「删除修订」记录，段落在接受修订前仍可见（带删除线）。在「改动」页点「接受全部」后段落才会真正移除。",
-          followTarget: { kind: "paragraphRange", startAnchor: `§${start}`, endAnchor: `§${Math.max(1, start - 1)}` },
-          verification: { ok: true, mode: "tracked", deleteRevisionsBefore, deleteRevisionsAfter }
-        };
+    const deleteRevisionsBefore = deleteRevisionCount(document);
+    let physicalDeleted = 0, trackedDeleted = 0, actions = 0;
+    const rollback = () => {
+      if (typeof application?.Undo !== "function") return false;
+      for (let attempt = 0; attempt < actions; attempt += 1) {
+        try {
+          const currentCount = countOf(getParagraphs());
+          const currentDeleteRevisions = deleteRevisionCount(document);
+          if (currentCount === before && currentDeleteRevisions <= deleteRevisionsBefore) break;
+          application.Undo();
+        } catch (error) { return false; }
       }
-    }
-    if (!countOk && !neighborOk) {
-      throw new Error(`删除后验证失败：段落总数 ${before} → ${paragraphsAfter}（预期 ${before - removed}），且 §${start} 未呈现后续内容。WPS 接口可能静默拒绝了删除；文档大概率未改动，请用 Ctrl+Z 核对并改用显示编辑标记（Ctrl+Shift+8）人工确认。`);
-    }
-    return {
-      deleted: removed,
-      anchors: `§${start}–§${end}`,
-      paragraphsBefore: before,
-      paragraphsAfter,
-      followTarget: { kind: "paragraphRange", startAnchor: `§${start}`, endAnchor: `§${Math.max(1, start - 1)}` },
-      verification: { ok: true, countOk, neighborOk }
+      return countOf(getParagraphs()) === before;
     };
+
+    try {
+      // 只删除每个空段自身最后一个段落标记；禁止 Select+Selection.Delete，后者在 WPS Mac 会吞掉相邻 TOC/正文。
+      for (let i = end; i >= start; i -= 1) {
+        paragraphs = getParagraphs();
+        const currentBefore = countOf(paragraphs);
+        const paragraph = paragraphs.Item(i);
+        const range = assertSimpleEmptyParagraph(paragraph, `§${i}`);
+        const rangeStart = Number(range.Start), rangeEnd = Number(range.End);
+        if (!Number.isFinite(rangeStart) || !Number.isFinite(rangeEnd) || rangeEnd <= rangeStart || typeof document.Range !== "function") {
+          throw new Error(`无法取得 §${i} 的精确段落标记范围。`);
+        }
+        const mark = document.Range(rangeEnd - 1, rangeEnd);
+        const markText = rawText(mark);
+        if (!/[\r\n\v]/.test(markText) || visibleText(mark) !== "") {
+          throw new Error(`§${i} 末字符不是独立空段标记，拒绝删除。`);
+        }
+        const revisionsBeforeOne = deleteRevisionCount(document);
+        if (typeof mark.Delete !== "function") throw new Error("当前 WPS 不支持精确删除单个段落标记；为保护正文已中止。");
+        mark.Delete();
+        actions += 1;
+        const currentAfter = countOf(getParagraphs());
+        const revisionsAfterOne = deleteRevisionCount(document);
+        if (currentAfter === currentBefore - 1) {
+          physicalDeleted += 1;
+          const protectedNow = normalizedParagraphText(getParagraphs().Item(i));
+          if (!protectedNow.startsWith(expectedNextText)) {
+            throw new Error(`EMPTY_PARAGRAPH_BOUNDARY_BREACH：删除 §${i} 后受保护正文不在预期位置（当前“${protectedNow.slice(0, 80)}”）。`);
+          }
+        } else if (tracked && currentAfter === currentBefore && revisionsAfterOne > revisionsBeforeOne) {
+          trackedDeleted += 1;
+        } else {
+          throw new Error(`EMPTY_PARAGRAPH_STEP_VERIFY_FAILED：删除 §${i} 后段落数 ${currentBefore}→${currentAfter}，删除修订 ${revisionsBeforeOne}→${revisionsAfterOne}。`);
+        }
+      }
+
+      const paragraphsAfter = countOf(getParagraphs());
+      if (paragraphsAfter !== before - physicalDeleted || physicalDeleted + trackedDeleted !== requested) {
+        throw new Error(`EMPTY_PARAGRAPH_FINAL_VERIFY_FAILED：计划 ${requested}，物理删除 ${physicalDeleted}，删除修订 ${trackedDeleted}，段落数 ${before}→${paragraphsAfter}。`);
+      }
+      if (physicalDeleted) {
+        const nextTextAfter = normalizedParagraphText(getParagraphs().Item(start));
+        if (!nextTextAfter.startsWith(expectedNextText)) throw new Error("EMPTY_PARAGRAPH_NEXT_TEXT_LOST：删除后未找到受保护的后续正文。");
+      }
+      if (expectedPreviousText && start > 1) {
+        const previousTextAfter = normalizedParagraphText(getParagraphs().Item(start - 1));
+        if (!previousTextAfter.startsWith(expectedPreviousText)) throw new Error("EMPTY_PARAGRAPH_PREVIOUS_TEXT_LOST：删除后前序 TOC/正文发生变化。");
+      }
+      return {
+        deleted: requested, anchors: `§${start}–§${end}`, paragraphsBefore: before, paragraphsAfter,
+        tracked: trackedDeleted > 0, physicalDeleted, trackedDeleted,
+        protectedBoundaries: { previous: previousTextBefore.slice(0, 120), next: nextTextBefore.slice(0, 120) },
+        note: trackedDeleted ? "修订模式开启：部分或全部空段已记为删除修订，接受修订后才会物理移除。" : undefined,
+        followTarget: { kind: "paragraphRange", startAnchor: `§${start}`, endAnchor: `§${Math.max(1, start - 1)}` },
+        verification: { ok: true, mode: trackedDeleted ? "tracked-or-mixed" : "physical" }
+      };
+    } catch (error) {
+      const rolledBack = rollback();
+      throw new Error(`${error?.message || error} 已执行自动撤销：${rolledBack ? "成功恢复原段落总数" : "无法确认恢复，请立即人工撤销并复核"}。`);
+    }
   }
 
   function getHeaderRange(document, sectionIndex) {

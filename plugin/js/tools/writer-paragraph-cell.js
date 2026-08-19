@@ -12,16 +12,19 @@
     description: [
       "删除一段连续的空段落区间（如 §95–§100 的多余空段）。",
       "硬性预检：expectedParagraphCount 必须等于 wps_get_document_map 返回的当前段落总数；区间内每个段落都必须无可见文字、无分页/分节符、不在表格内、不含图片/形状——任一不满足则整体中止、不删任何段落。",
-      "自后向前删除并复核段落总数恰好减少区间长度；验证失败会提示用撤销/备份恢复。",
+      "必须提供 expectedNextText（空段后首个正文/标题，至少 4 字）并可提供 expectedPreviousText；两侧任一不匹配则整体中止。单次最多 12 个空段。",
+      "只删除每个空段自身的一个段落标记，禁止 Selection.Delete；每删一个立即验证只减少 1 段且后续正文仍在，异常会自动撤销本工具已做动作。",
       "表格单元格末尾的强制空段会被拒绝删除（破坏表格结构），这是预期行为。"
     ].join("\n"),
     parameters: {
       type: "object",
-      required: ["startParagraph", "endParagraph", "expectedParagraphCount"],
+      required: ["startParagraph", "endParagraph", "expectedParagraphCount", "expectedNextText"],
       properties: {
         startParagraph: { type: "integer", minimum: 1, description: "区间起始段落锚点（§N 的 N）。" },
         endParagraph: { type: "integer", minimum: 1, description: "区间结束段落锚点（含），必须 ≥ startParagraph。" },
-        expectedParagraphCount: { type: "integer", minimum: 1, description: "wps_get_document_map 返回的当前段落总数，防止文档变更后误删。" }
+        expectedParagraphCount: { type: "integer", minimum: 1, description: "wps_get_document_map 返回的当前段落总数，防止文档变更后误删。" },
+        expectedNextText: { type: "string", minLength: 4, description: "区间后第一个非空正文/标题的地图原文前缀（至少 4 字）；写后必须仍存在。" },
+        expectedPreviousText: { type: "string", minLength: 4, description: "可选：区间前一个 TOC/正文段落的地图原文前缀；写后必须保持。" }
       }
     },
     handler: async (args = {}) => await api.deleteEmptyParagraphs(args)
