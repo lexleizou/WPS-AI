@@ -643,6 +643,8 @@ body.lingxi-graphite-v1 .lingxi-write-preview-gate {
   line-height: 18px;
 }
 body.lingxi-graphite-v1 .lingxi-write-preview-gate.hidden { display: none; }
+body.lingxi-graphite-v1 .lingxi-write-preview-gate[data-phase="previewing"] { border-color: var(--lg-warning); color: var(--lg-text); }
+body.lingxi-graphite-v1 .lingxi-write-preview-gate[data-phase="preview_failed"] { border-color: var(--lg-error); color: var(--lg-error); }
 body.lingxi-graphite-v1 .lingxi-write-preview-gate[data-phase="awaiting_confirmation"] { border-color: var(--lg-warning); color: var(--lg-text); }
 body.lingxi-graphite-v1 .lingxi-write-preview-gate[data-phase="approved"] { border-color: var(--lg-success); }
 @media (max-width: 420px) { body.lingxi-graphite-v1 .lingxi-write-preview-gate { margin-inline: 8px; } }
