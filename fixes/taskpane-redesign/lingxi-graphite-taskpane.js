@@ -3109,6 +3109,8 @@
   }
 
   function syncRichSurface(entry) {
+    // chatInput 会随内容自动增高；每次 input/scroll 都同步实际内容盒，避免背板仍停在旧尺寸。
+    layoutRichSurface(entry);
     entry.backdrop.innerHTML = renderRichInputHtml(entry.textarea.value);
     entry.backdrop.scrollTop = entry.textarea.scrollTop;
     entry.backdrop.scrollLeft = entry.textarea.scrollLeft;
@@ -3174,9 +3176,27 @@
     backdrop.setAttribute("aria-hidden", "true");
     wrap.insertBefore(backdrop, textarea);
     textarea.classList.add("lri-active");
-    const entry = { textarea, backdrop };
+    // WPS WebView 对 color:transparent 的 textarea 仍可能绘制原生字形；
+    // 同时钉死 WebKit text fill，避免原生文字与背板双层重影。
+    textarea.style.setProperty("color", "transparent", "important");
+    textarea.style.setProperty("-webkit-text-fill-color", "transparent", "important");
+    textarea.style.setProperty("text-shadow", "none", "important");
+    textarea.style.setProperty("caret-color", "var(--lg-primary)", "important");
+    const entry = { textarea, backdrop, wrap };
     textarea.addEventListener("input", () => syncRichSurface(entry));
     textarea.addEventListener("scroll", () => syncRichSurface(entry), { passive: true });
+    // IME 拼音组合期间临时只显示原生输入，防止未提交拼音与背板内容不同步。
+    textarea.addEventListener("compositionstart", () => {
+      wrap.classList.add("lri-composing");
+      textarea.style.setProperty("color", "var(--lg-text)", "important");
+      textarea.style.setProperty("-webkit-text-fill-color", "var(--lg-text)", "important");
+    });
+    textarea.addEventListener("compositionend", () => {
+      wrap.classList.remove("lri-composing");
+      textarea.style.setProperty("color", "transparent", "important");
+      textarea.style.setProperty("-webkit-text-fill-color", "transparent", "important");
+      syncRichSurface(entry);
+    });
     window.addEventListener("resize", () => layoutRichSurface(entry), { passive: true });
     layoutRichSurface(entry);
     syncRichSurface(entry);

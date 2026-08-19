@@ -1467,6 +1467,7 @@ body.lingxi-graphite-v1 .lingxi-floating-copy-btn:hover { color: var(--lg-primar
 body.lingxi-graphite-v1 .lri-wrap { position: relative; width: 100%; }
 body.lingxi-graphite-v1 .lri-backdrop {
   position: absolute;
+  z-index: 0;
   overflow: hidden;
   pointer-events: none;
   white-space: pre-wrap;
@@ -1477,11 +1478,23 @@ body.lingxi-graphite-v1 .lri-backdrop {
 }
 body.lingxi-graphite-v1 .lri-wrap > textarea.lri-active {
   position: relative;
+  z-index: 1;
   background: transparent;
-  color: transparent;
-  caret-color: var(--lg-primary);
+  color: transparent !important;
+  -webkit-text-fill-color: transparent !important;
+  text-shadow: none !important;
+  caret-color: var(--lg-primary) !important;
 }
-body.lingxi-graphite-v1 .lri-wrap > textarea.lri-active::selection { background: rgba(76, 139, 245, .28); color: transparent; }
+body.lingxi-graphite-v1 .lri-wrap > textarea.lri-active::placeholder {
+  color: var(--lg-text-tertiary) !important;
+  -webkit-text-fill-color: var(--lg-text-tertiary) !important;
+}
+body.lingxi-graphite-v1 .lri-wrap > textarea.lri-active::selection { background: rgba(76, 139, 245, .28); color: transparent; -webkit-text-fill-color: transparent; }
+body.lingxi-graphite-v1 .lri-wrap.lri-composing .lri-backdrop { visibility: hidden; }
+body.lingxi-graphite-v1 .lri-wrap.lri-composing > textarea.lri-active {
+  color: var(--lg-text) !important;
+  -webkit-text-fill-color: var(--lg-text) !important;
+}
 body.lingxi-graphite-v1 .lri-line { display: inline; }
 body.lingxi-graphite-v1 .lri-section { color: var(--lg-primary); font-weight: 600; }
 body.lingxi-graphite-v1 .lri-heading { font-weight: 700; }
