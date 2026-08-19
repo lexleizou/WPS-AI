@@ -15,3 +15,9 @@ assert.ok(bridge[0].includes("chatInput"), "must only arm for chat input Enter")
 assert.ok(js.includes("client.runWithTools = async (request) =>"), "runWithTools request bridge missing");
 
 console.log("PASS agent reference Enter-to-send arming");
+assert(js.includes("addWordSelectionReference"), "Word selection reference missing");
+assert(js.includes("findParagraphAnchorAt"), "paragraph anchor binary search missing");
+assert(js.includes("@ Word 选区"), "@ menu selection entry missing");
+assert(js.includes('"selection" ? "选区"'), "chip kind label missing");
+assert(js.includes("lingxi-agent-reference-action"), "persistent tray action chip missing");
+console.log("PASS word selection reference wiring");
