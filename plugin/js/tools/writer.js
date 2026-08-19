@@ -306,6 +306,43 @@
   });
 
   registry.registerTool({
+    name: "wps_get_ooxml",
+    hosts: ["wps"],
+    description: "读取选区（或全文）的 OOXML 源码（WordprocessingML）。用途：当专用读取工具看不到你需要的结构（制表位/域代码/run 级属性/复杂样式）时使用。scope=selection(默认)/document；maxChars 限制返回大小（默认 60000，超出截断并提示缩小范围）。写 OOXML 前必须先读它确认结构。",
+    parameters: {
+      type: "object",
+      properties: {
+        scope: { type: "string", enum: ["selection", "document"] },
+        maxChars: { type: "number" }
+      }
+    },
+    handler: async (opts = {}) => {
+      const fn = writer().getOoxml;
+      if (typeof fn !== "function") throw new Error("当前宿主不支持读取 OOXML。");
+      return await fn.call(writer(), opts);
+    }
+  });
+
+  registry.registerTool({
+    name: "wps_insert_ooxml",
+    hosts: ["wps"],
+    description: "【逃生舱·慎用】直接插入一段 OOXML（WordprocessingML）到文档：选区非折叠=替换选区，折叠=插入光标处；position=documentEnd 追加到文末。仅当专用工具（wps_insert_text/wps_write_blocks/wps_modify_style/wps_set_tab_stops 等）确实表达不了时才用（如域代码、复杂 run 属性、特殊结构）。纪律：①先用 wps_get_ooxml 读目标位置结构；②XML 必须是合法的 w: 命名空间片段，尽量小（单个 w:p/w:tbl 级别），大文档分批；③写后用只读工具复核结果。",
+    parameters: {
+      type: "object",
+      required: ["xml"],
+      properties: {
+        xml: { type: "string", description: "合法的 WordprocessingML 片段（<w:p>…</w:p> 等）" },
+        position: { type: "string", enum: ["selection", "documentEnd"] }
+      }
+    },
+    handler: async (opts = {}) => {
+      const fn = writer().insertOoxml;
+      if (typeof fn !== "function") throw new Error("当前宿主不支持插入 OOXML。");
+      return await fn.call(writer(), opts);
+    }
+  });
+
+  registry.registerTool({
     name: "wps_set_header_footer",
     hosts: ["wps"],
     description: "设置页眉或页脚。target=header/footer。text=文字内容；pageNumber=true 插入页码；alignment 对齐(left/center/right)。",

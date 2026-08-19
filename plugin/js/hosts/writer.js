@@ -2031,6 +2031,62 @@
     return { contentWidth, leader: opts.leader || "dots", levels, applied: levels.every((l) => l.applied) };
   }
 
+  // ---- OOXML 逃生舱：专用工具表达不了的东西（域/复杂 run 属性/特殊结构），直接读写 WordprocessingML ----
+  // 读：Range.WordOpenXML；写：Range.InsertXML（WPS 文字均支持，与 Sally 同款机制）
+  async function getOoxml(opts = {}) {
+    const scope = opts.scope || "selection";
+    let range;
+    if (scope === "document") {
+      const d = await ensureDocument();
+      range = d.Content;
+    } else {
+      const sel = await getSelection();
+      if (!sel) throw new Error("未获取到选区。");
+      range = typeof sel.Range === "function" ? await sel.Range() : sel.Range;
+    }
+    let xml;
+    try { xml = String(range.WordOpenXML || ""); } catch (e) {
+      throw new Error("当前环境不支持读取 OOXML：" + String((e && e.message) || e));
+    }
+    const maxChars = numOr(opts.maxChars) || 60000;
+    const totalChars = xml.length;
+    if (xml.length > maxChars) {
+      // 太大就截头留尾并明示，引导改用锚点缩小范围
+      const head = Math.floor(maxChars * 0.7);
+      xml = xml.slice(0, head) + "\n<!-- ……中间省略 " + (totalChars - head) + " 字符，请用 selection 范围或更小锚点分段读取…… -->\n";
+    }
+    return { scope, totalChars, xml };
+  }
+
+  async function insertOoxml(opts = {}) {
+    const xml = String(opts.xml || "").trim();
+    if (!xml) throw new Error("xml 不能为空。");
+    if (!xml.includes("w:")) throw new Error("xml 看起来不是 WordprocessingML（缺少 w: 命名空间标签）。");
+    let range;
+    if (opts.position === "documentEnd") {
+      const d = await ensureDocument();
+      range = d.Content;
+      try { range.Collapse(0); } catch (e) {} // wdCollapseEnd=0：插到文档末尾
+    } else {
+      const sel = await getSelection();
+      if (!sel) throw new Error("未获取到选区。");
+      range = typeof sel.Range === "function" ? await sel.Range() : sel.Range;
+      // 默认：选区非折叠则替换选区内容，折叠则插入光标处——和直觉一致
+    }
+    const d = await ensureDocument();
+    let beforeLen = 0;
+    try { beforeLen = Number(d.Content.Text.length) || 0; } catch (e) {}
+    try {
+      range.InsertXML(xml);
+    } catch (e) {
+      throw new Error("InsertXML 失败（XML 不合法或包含当前位置不允许的元素）：" + String((e && e.message) || e));
+    }
+    // 读回校验：文档文本长度应发生变化（纯格式类片段可能不变，故只作提示不作失败）
+    let afterLen = beforeLen;
+    try { afterLen = Number(d.Content.Text.length) || 0; } catch (e) {}
+    return { applied: true, textLengthBefore: beforeLen, textLengthAfter: afterLen };
+  }
+
   async function setHeaderFooter(opts = {}) {
     const d = await ensureDocument();
     const section = d.Sections.Item(1);
@@ -2301,6 +2357,8 @@
     setTabStops,                 // 重设选区制表位（读回校验）
     modifyStyle,                 // 修改样式（段落/字体/制表位，改样式才扛得住域刷新）
     fixTocPageAlignment,         // 目录页码右对齐一键修复（目录 1-9 样式统一点前导符右制表位）
+    getOoxml,                    // 读取选区/全文的 OOXML（逃生舱·读）
+    insertOoxml,                 // 直接插入 OOXML 片段（逃生舱·写，专用工具表达不了时用）
     setHeaderFooter,             // 页眉页脚 + 页码
     pageSetup,                   // 页面设置（纸张/边距/横竖/分栏）
     insertFootnote,              // 脚注/尾注
