@@ -2236,14 +2236,15 @@
   // macOS WPS 有时会把 ⌘V 同时分派给已聚焦的 WebView 和 Writer 主文档。
   // 主业务脚本已负责异步读剪贴板、长文本转附件；这里仅在更外层 capture 阶段
   // 截断按键向 WPS 主窗口的传播，保留其原有的安全粘贴路径。
-  const CHAT_PARAGRAPH_ANCHOR = /§([1-9]\d*)/g;
+  // 聊天锚点：§N = 第 N 个段落；T<N> = 第 N 个表格（与 wps_get_document_map 的 T 锚点一致）。
+  const CHAT_PARAGRAPH_ANCHOR = /§([1-9]\d*)|\bT([1-9]\d*)\b/g;
   let chatAnchorFeedbackTimer = 0;
   let chatAnchorDecorateScheduled = false;
 
   function extractParagraphAnchors(text) {
     const anchors = new Set();
     const source = String(text || "");
-    for (const match of source.matchAll(CHAT_PARAGRAPH_ANCHOR)) anchors.add(`§${match[1]}`);
+    for (const match of source.matchAll(CHAT_PARAGRAPH_ANCHOR)) anchors.add(match[1] ? `§${match[1]}` : `T${match[2]}`);
     return Array.from(anchors);
   }
 
@@ -2265,29 +2266,39 @@
   }
 
   async function revealChatAnchor(anchor) {
-    const match = /^§([1-9]\d*)$/.exec(String(anchor || "").trim());
-    if (!match) throw new Error("无效段落锚点。");
+    const text = String(anchor || "").trim();
+    const paragraphMatch = /^§([1-9]\d*)$/.exec(text);
+    const tableMatch = /^T([1-9]\d*)$/.exec(text);
+    if (!paragraphMatch && !tableMatch) throw new Error("无效锚点。");
     const info = await window.WpsAiDocument?.getHostInfo?.();
-    if (info?.host && info.host !== "wps") throw new Error("段落锚点定位仅适用于 WPS 文字文档。");
+    if (info?.host && info.host !== "wps") throw new Error("锚点定位仅适用于 WPS 文字文档。");
     const application = window.WpsAiAddon?.getApplicationSync?.() || window.wps?.Application || null;
     const document = application?.ActiveDocument;
-    const paragraphs = document?.Paragraphs || document?.Content?.Paragraphs;
-    const index = Number(match[1]);
-    const count = Number(paragraphs?.Count) || 0;
-    if (!document || !paragraphs || index > count) throw new Error(`当前文档没有 ${anchor}。`);
-    const range = paragraphs.Item(index)?.Range;
-    if (!range) throw new Error(`无法读取 ${anchor} 的位置。`);
-    // 用户主动点击锚点后，选中对应段落并滚动到可见位置，便于在文档中核对原文。
+    const index = Number((paragraphMatch || tableMatch)[1]);
+    let range = null;
+    if (paragraphMatch) {
+      const paragraphs = document?.Paragraphs || document?.Content?.Paragraphs;
+      const count = Number(paragraphs?.Count) || 0;
+      if (!document || !paragraphs || index > count) throw new Error(`当前文档没有 ${text}。`);
+      range = paragraphs.Item(index)?.Range;
+    } else {
+      const tables = document?.Tables || document?.Content?.Tables;
+      const count = Number(tables?.Count) || 0;
+      if (!document || !tables || index > count) throw new Error(`当前文档没有表格 ${text}。`);
+      range = tables.Item(index)?.Range;
+    }
+    if (!range) throw new Error(`无法读取 ${text} 的位置。`);
+    // 用户主动点击锚点后，选中对应段落/表格并滚动到可见位置，便于在文档中核对原文。
     range.Select?.();
     const windowRef = application?.ActiveWindow;
     if (!windowRef?.ScrollIntoView) throw new Error("当前 WPS 窗口不支持视图定位。");
     windowRef.ScrollIntoView(range, true);
-    return { anchor, revealed: true };
+    return { anchor: text, revealed: true };
   }
 
   function shouldDecorateChatAnchorText(node) {
     const parent = node?.parentElement;
-    if (!parent || !String(node.nodeValue || "").includes("§")) return false;
+    if (!parent || !/§|\bT[1-9]\d*\b/.test(String(node.nodeValue || ""))) return false;
     return !parent.closest("button, a, pre, code, .lingxi-chat-anchor-link, [data-lingxi-anchor-decorated='1']");
   }
 
@@ -2305,14 +2316,15 @@
       const fragment = document.createDocumentFragment();
       let cursor = 0;
       matches.forEach((match) => {
-        const anchor = `§${match[1]}`;
+        const anchor = match[1] ? `§${match[1]}` : `T${match[2]}`;
+        const targetLabel = match[1] ? `段落 ${anchor}` : `表格 ${anchor}`;
         fragment.appendChild(document.createTextNode(text.slice(cursor, match.index)));
         const link = document.createElement("button");
         link.type = "button";
         link.className = "lingxi-chat-anchor-link";
         link.dataset.anchor = anchor;
-        link.title = `跳转到 Word ${anchor}`;
-        link.setAttribute("aria-label", `跳转到 Word 段落 ${anchor}`);
+        link.title = `跳转到 Word ${targetLabel}`;
+        link.setAttribute("aria-label", `跳转到 Word ${targetLabel}`);
         link.textContent = anchor;
         fragment.appendChild(link);
         cursor = Number(match.index) + anchor.length;
