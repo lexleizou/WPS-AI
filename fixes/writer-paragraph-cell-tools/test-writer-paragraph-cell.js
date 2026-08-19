@@ -4,9 +4,9 @@ const assert = require("assert");
 const fs = require("fs");
 const vm = require("vm");
 
-function makeDoc() {
+function makeDoc(texts) {
   // 段落：1=正文，2-4=空段，5=表内空段，6=含分页符
-  const texts = ["正文\r", "\r", "\r", "\r", "\r\u0007", "\f\r"];
+  texts = texts || ["正文\r", "\r", "\r", "\r", "\r\u0007", "\f\r"];
   const deleted = [];
   const selection = {
     index: -1,
@@ -80,4 +80,29 @@ vm.runInContext(fs.readFileSync(process.env.HOST, "utf8"), context);
   // A3: 文字不存在时拒绝
   await assert.rejects(() => api.clearHeaderCellText({ expectedText: "桓科生物" }), /出现 0 次/);
   console.log("PASS writer paragraph & header-cell tools v2");
+})().catch((error) => { console.error(error); process.exit(1); });
+
+// v3: 修订模式——段落总数不变但删除修订数增加时，应判定为 tracked 成功
+(async () => {
+  const { doc: doc2, selection: sel2, deleted: del2 } = makeDoc(["正文\r", "\r", "\r", "\r", "后续内容\r", "末段\r"]);
+  doc2.TrackRevisions = true;
+  const revs = { count: 0, get Count() { return this.count; }, Item() { return { Type: 1 }; } };
+  doc2.Revisions = revs;
+  const origDelete = sel2.Delete.bind(sel2);
+  sel2.Delete = function () { origDelete(); revs.count += 1; };
+  const ctx2 = { window: null, Promise, Number, String, Object, Array, Math, Error, JSON };
+  ctx2.window = ctx2;
+  ctx2.WpsAiAddon = { async getApplication() {
+    // 修订模式下 Count 不随删除变化
+    const p = doc2.Paragraphs; Object.defineProperty(p, "Count", { get: () => 6 });
+    return { ActiveDocument: doc2, Selection: sel2 };
+  } };
+  vm.createContext(ctx2);
+  vm.runInContext(fs.readFileSync(process.env.HOST, "utf8"), ctx2);
+  const api2 = ctx2.WpsAiParagraphCellTools;
+  const tracked = await api2.deleteEmptyParagraphs({ startParagraph: 2, endParagraph: 4, expectedParagraphCount: 6 });
+  assert.equal(tracked.tracked, true);
+  assert.equal(tracked.verification.mode, "tracked");
+  assert.equal(del2.length, 3);
+  console.log("PASS tracked-revision deletion path");
 })().catch((error) => { console.error(error); process.exit(1); });

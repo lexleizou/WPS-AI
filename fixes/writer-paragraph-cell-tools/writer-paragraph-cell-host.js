@@ -52,6 +52,9 @@
       try { return visibleText(paragraphs.Item(index)?.Range).slice(0, 40); } catch (error) { return null; }
     };
     const tailSignature = signatureOf(end + 1);
+    // 修订模式：删除会记为删除修订，段落暂时留在文档里（总数不变），接受修订后才消失。
+    const tracked = trackRevisionsOn(document);
+    const deleteRevisionsBefore = tracked ? deleteRevisionCount(document) : 0;
 
     // 自后向前删除，保持前序锚点在删除过程中仍然有效。
     // WPS macOS JSAPI 的 Range.Delete() 对段落范围可能静默无操作；优先用 Select+Selection.Delete（主 writer host 已验证的通路）。
@@ -75,7 +78,23 @@
     const countOk = paragraphsAfter === before - removed;
     let shiftedSignature = null;
     try { shiftedSignature = visibleText((document.Paragraphs || document.Content?.Paragraphs).Item(start)?.Range).slice(0, 40); } catch (error) {}
-    const neighborOk = tailSignature == null ? false : shiftedSignature === tailSignature;
+    // 空签名（后邻也是空段/不可读）无法作为证据，避免空串恒等造成误判。
+    const neighborOk = !tailSignature ? false : shiftedSignature === tailSignature;
+    if (!countOk && !neighborOk && tracked) {
+      const deleteRevisionsAfter = deleteRevisionCount(document);
+      if (deleteRevisionsAfter >= deleteRevisionsBefore + removed) {
+        return {
+          deleted: removed,
+          anchors: `§${start}–§${end}`,
+          paragraphsBefore: before,
+          paragraphsAfter,
+          tracked: true,
+          note: "修订模式开启：已按「删除修订」记录，段落在接受修订前仍可见（带删除线）。在「改动」页点「接受全部」后段落才会真正移除。",
+          followTarget: { kind: "paragraphRange", startAnchor: `§${start}`, endAnchor: `§${Math.max(1, start - 1)}` },
+          verification: { ok: true, mode: "tracked", deleteRevisionsBefore, deleteRevisionsAfter }
+        };
+      }
+    }
     if (!countOk && !neighborOk) {
       throw new Error(`删除后验证失败：段落总数 ${before} → ${paragraphsAfter}（预期 ${before - removed}），且 §${start} 未呈现后续内容。WPS 接口可能静默拒绝了删除；文档大概率未改动，请用 Ctrl+Z 核对并改用显示编辑标记（Ctrl+Shift+8）人工确认。`);
     }
@@ -101,6 +120,20 @@
   }
 
   function imageCount(range) { return countOf(range?.InlineShapes) + countOf(range?.ShapeRange ? null : null) + countOf(range?.Shapes); }
+
+  function trackRevisionsOn(document) { try { return !!document.TrackRevisions; } catch (error) { return false; } }
+
+  function deleteRevisionCount(document) {
+    let total = 0;
+    try {
+      const revisions = document.Revisions;
+      const count = countOf(revisions);
+      for (let i = 1; i <= count; i += 1) {
+        try { if (Number(revisions.Item(i)?.Type) === 1) total += 1; } catch (error) {}
+      }
+    } catch (error) {}
+    return total;
+  }
 
   async function clearHeaderCellText(options = {}) {
     const sectionIndex = Math.floor(Number(options.sectionIndex ?? 1));
@@ -129,6 +162,8 @@
 
     // 用 Range.Find 在单元格范围内定位文字：命中后该 Range 被重定义为匹配文本，
     // 再删该子范围。不做字符偏移计算——InlineShape 在 Text 与故事坐标中的宽度可能不同。
+    const tracked = trackRevisionsOn(document);
+    const deleteRevisionsBefore = tracked ? deleteRevisionCount(document) : 0;
     const find = range.Find;
     if (!find || typeof find.Execute !== "function") throw new Error("当前 WPS 版本不支持在页眉单元格内查找文字。");
     try { find.ClearFormatting?.(); } catch (error) {}
@@ -145,7 +180,18 @@
     const after = table.Cell(row, column)?.Range;
     const imagesAfter = imageCount(after);
     if (imagesAfter !== imagesBefore) throw new Error(`清除后图片数量变化（${imagesBefore} → ${imagesAfter}），请立即 Ctrl+Z 恢复。`);
-    if (rawText(after).includes(expectedText)) throw new Error("清除后目标文字仍存在，请检查文档并用 Ctrl+Z 恢复。");
+    const stillThere = rawText(after).includes(expectedText);
+    if (stillThere && tracked && deleteRevisionCount(document) > deleteRevisionsBefore) {
+      return {
+        cleared: expectedText,
+        location: `节${sectionIndex} 主页眉 表${tableIndex} (${row},${column})`,
+        imagesPreserved: imagesAfter,
+        tracked: true,
+        note: "修订模式开启：文字已按「删除修订」记录（仍可见但带删除线），接受修订后才会消失。",
+        verification: { ok: true, mode: "tracked" }
+      };
+    }
+    if (stillThere) throw new Error("清除后目标文字仍存在，请检查文档并用 Ctrl+Z 恢复。");
     return {
       cleared: expectedText,
       location: `节${sectionIndex} 主页眉 表${tableIndex} (${row},${column})`,
