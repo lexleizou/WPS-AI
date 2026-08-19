@@ -186,7 +186,8 @@
     "js/tools/presentation.js",
     "js/tools/pdf.js",
     "js/tools/image.js",
-    "js/mcp-client-ui.js"    // MCP Client 设置面板
+    "js/mcp-client-ui.js",    // MCP Client 设置面板
+    "js/auto-review.js"       // 改完自动审核（check/visual 两档逻辑 + pdf.js 懒加载）——要在 app.js 之前
   ];
 
   if (isTaskpanePage) {

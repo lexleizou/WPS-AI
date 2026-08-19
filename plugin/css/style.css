@@ -9538,3 +9538,25 @@ body.pure-mode .image-gen-panel.hidden { display: none; }
 .thinking-menu-item:hover { background: var(--surface, #f5f7fa); }
 .thinking-menu-item.active { color: var(--primary, #2563eb); }
 .thinking-menu-check { width: 14px; flex: none; display: inline-flex; align-items: center; justify-content: center; color: var(--primary, #2563eb); }
+
+/* ===== 改完自动审核卡片：轮末后台复核改动结果（临时 UI，不进对话持久化） ===== */
+.auto-review-card { margin: 8px 0; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--panel); overflow: hidden; }
+.auto-review-card.auto-review-pass { border-left: 3px solid var(--success); }
+.auto-review-card.auto-review-fail { border-left: 3px solid var(--warning); }
+.auto-review-head { display: flex; align-items: center; gap: 8px; padding: 7px 12px; border-bottom: 1px solid var(--divider); background: var(--panel-alt); }
+.auto-review-title { font-size: 13px; font-weight: 600; color: var(--text); }
+.auto-review-mode-badge { font-size: 11px; color: var(--muted); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 6px; }
+.auto-review-modes { margin-left: auto; display: flex; border: 1px solid var(--border-strong); border-radius: var(--radius-md); overflow: hidden; }
+.auto-review-mode-btn { border: none; background: var(--panel); color: var(--muted); font-size: 11px; padding: 3px 8px; cursor: pointer; border-right: 1px solid var(--border-strong); font-family: inherit; }
+.auto-review-mode-btn:last-child { border-right: none; }
+.auto-review-mode-btn:hover { color: var(--text); }
+.auto-review-mode-btn.active { background: var(--primary); color: #fff; }
+.auto-review-body { padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.auto-review-verdict { font-size: 13px; color: var(--text); word-break: break-word; }
+.auto-review-note { font-size: 12px; color: var(--muted); }
+.auto-review-issues { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text); }
+.auto-review-issues li { line-height: 1.5; word-break: break-word; }
+.auto-review-shots { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
+.auto-review-shot { margin: 0; }
+.auto-review-shot img { width: 100%; display: block; border: 1px solid var(--border); border-radius: var(--radius-md); background: #fff; }
+.auto-review-shot figcaption { font-size: 11px; color: var(--muted); text-align: center; margin-top: 2px; }

@@ -1561,3 +1561,9 @@ body.lingxi-graphite-v1 .chat-slash-item.active { background: var(--lg-bg-hover)
 body.lingxi-graphite-v1 .chat-fold-divider-expand { border-color: var(--lg-border); background: var(--lg-bg-elevated); color: var(--lg-text-secondary); }
 body.lingxi-graphite-v1 .chat-fold-divider-expand:hover { background: var(--lg-bg-hover); color: var(--lg-text); }
 body.lingxi-graphite-v1 .settings-search-count-badge { background: var(--lg-bg-active); color: var(--lg-text-secondary); }
+
+/* 改完自动审核卡片 —— 硬编码的 #fff 截图底在暗色下刺眼；active 档按钮换 lg 主色 */
+body.lingxi-graphite-v1 .auto-review-mode-btn.active { background: var(--lg-primary); color: var(--lg-primary-on); }
+body.lingxi-graphite-v1 .auto-review-shot img { background: var(--lg-bg-elevated); border-color: var(--lg-border); }
+body.lingxi-graphite-v1 .auto-review-card.auto-review-pass { border-left-color: var(--lg-success); }
+body.lingxi-graphite-v1 .auto-review-card.auto-review-fail { border-left-color: var(--lg-warning); }

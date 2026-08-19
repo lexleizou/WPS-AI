@@ -286,6 +286,7 @@
       "providerSelect", "operationModeSelect", "maxToolIterationsInput", "uiLanguageSelect", "aiFollowHighlightInput",
       "enableHostWps", "enableHostEt", "enableHostWpp", "enableHostPdf",
       "systemPromptInput", "systemPromptResetBtn", "imageSizeOverrideInput", "showToolCallLogsInput", "splitLayersOnInsertInput",
+      "autoReviewSelect",
       "signInBtn", "exchangeCodeBtn", "authCodeInput", "signOutBtn", "tokenInfo",
       "codexAuthArea", "codexSignedInArea",
       "openaiBaseUrl", "openaiApiKey", "openaiDefaultModel", "openaiUseProxy",
@@ -2512,6 +2513,8 @@
     if (els.imageSizeOverrideInput) els.imageSizeOverrideInput.value = (s.imageSizeOverride != null) ? s.imageSizeOverride : "";
     if (els.showToolCallLogsInput) els.showToolCallLogsInput.checked = !!s.showToolCallLogs;
     if (els.aiFollowHighlightInput) els.aiFollowHighlightInput.checked = s.aiFollowHighlight !== false;
+    // 改完自动审核档位（off/check/visual），非法值兜底回默认 check
+    if (els.autoReviewSelect) els.autoReviewSelect.value = global.WpsAiAutoReview?.normalizeMode?.(s.autoReview) || "check";
     // splitLayersOnInsert 默认开启（实验阶段过去后改成默认 true，让插入的 PPT 能分层选中）。
     // 之前 loadSettings 漏 merge 这条，用户的勾选保存了也读不回来 —— 已在 registry.js 修。
     if (els.splitLayersOnInsertInput) els.splitLayersOnInsertInput.checked = s.splitLayersOnInsert !== false;
@@ -2621,6 +2624,7 @@
     if (els.imageSizeOverrideInput) currentSettings.imageSizeOverride = els.imageSizeOverrideInput.value;
     if (els.showToolCallLogsInput) currentSettings.showToolCallLogs = !!els.showToolCallLogsInput.checked;
     if (els.aiFollowHighlightInput) currentSettings.aiFollowHighlight = !!els.aiFollowHighlightInput.checked;
+    if (els.autoReviewSelect) currentSettings.autoReview = global.WpsAiAutoReview?.normalizeMode?.(els.autoReviewSelect.value) || "check";
     if (els.splitLayersOnInsertInput) currentSettings.splitLayersOnInsert = !!els.splitLayersOnInsertInput.checked;
     if (els.mcpServerEnabledInput) currentSettings.mcpServerEnabled = !!els.mcpServerEnabledInput.checked;
     if (els.updateAutoCheckInput) currentSettings.updateAutoCheck = !!els.updateAutoCheckInput.checked;
@@ -9651,7 +9655,156 @@
       try { maybeWarnWeakToolModel(turnEvents, assistantText); } catch (e) {}
       // 技能沉淀提示：多轮 + 有实际操作后，提示用户把这轮总结成可复用技能
       try { tallySkillSuggest(turnEvents); } catch (e) {}
+      // 改完自动审核（fire-and-forget）：本轮跑过修改型工具且设置非 off 时，后台复核改动，
+      // 完成后把审核卡片追加到聊天流末尾（临时 UI，不进 eventsV2 / 对话持久化）
+      try { scheduleAutoReview(userInput, turnEvents); } catch (e) {}
     }
+  }
+
+  // ---------------- 改完自动审核（auto-review） ----------------
+  // 一轮对话结束（finally 收尾、对话持久化之后）触发：把本轮修改型工具记录交给
+  // WpsAiAutoReview 复核，完成后把卡片 append 到聊天流末尾。卡片是临时 UI——
+  // 不写 eventsV2 / conversation，截图（visual 档）只留在内存，绝不进对话持久化。
+
+  // 从 WpsAiHistory 收集当前 turn 的修改型工具记录。history entry 带 target/params/
+  // resultSummary 但没有工具返回的 failures 数组；turnEvents 的 tool_result 带完整 result，
+  // 两边按工具名顺序配对补齐 failures（同一工具一轮可能调多次，队列依次消费）。
+  function collectAutoReviewEntries(turnId, turnEvents) {
+    const H = global.WpsAiHistory;
+    if (!H || !turnId) return [];
+    const resultsByName = new Map();
+    (turnEvents || []).forEach((ev) => {
+      if (!ev || ev.type !== "tool_result" || !ev.name) return;
+      if (!resultsByName.has(ev.name)) resultsByName.set(ev.name, []);
+      resultsByName.get(ev.name).push(ev.result);
+    });
+    return (H.listEntries?.() || [])
+      .filter((e) => e && e.turnId === turnId)
+      .sort((a, b) => (a.ts || 0) - (b.ts || 0))
+      .map((e) => {
+        const queue = resultsByName.get(e.toolName);
+        const result = queue && queue.length ? queue.shift() : null;
+        return {
+          toolName: e.toolName,
+          friendlyName: e.friendlyName || e.toolName,
+          ok: e.ok !== false,
+          error: e.error || null,
+          failures: Array.isArray(result?.value?.failures) ? result.value.failures : null,
+          params: e.params || null,
+          target: e.target || null,
+          resultSummary: e.resultSummary || ""
+        };
+      });
+  }
+
+  function scheduleAutoReview(userInput, turnEvents) {
+    const AR = global.WpsAiAutoReview;
+    if (!AR?.run) return;
+    const mode = AR.normalizeMode ? AR.normalizeMode(currentSettings?.autoReview) : "check";
+    if (mode === "off") return;
+    const turnId = global.WpsAiHistory?.getCurrentTurnId?.() || null;
+    const entries = collectAutoReviewEntries(turnId, turnEvents);
+    if (!entries.length) return; // 本轮没有修改型工具真正执行，不审核
+    const model = els.modelSelect?.value || "";
+    Promise.resolve()
+      .then(() => AR.run({ prompt: userInput, entries, model, mode }))
+      .then((result) => { try { appendAutoReviewCard(result); } catch (e) {} })
+      .catch((e) => { try { console.warn("[auto-review] 审核失败（忽略）:", e?.message || e); } catch (e2) {} });
+  }
+
+  // 审核卡片：标题「自动审核」+ 三档快速切换（改了即时写回设置，不用进设置弹窗）+ 结果区
+  // （pass=✅+截图缩略图网格；fail=⚠️+文字问题清单，不贴图）。全部 createElement/textContent
+  // 拼装——模型返回的 summary/issues 不走 innerHTML，防注入。
+  function appendAutoReviewCard(result) {
+    if (!els.chatStream || !result) return;
+    const AR = global.WpsAiAutoReview;
+    const card = document.createElement("div");
+    card.className = `auto-review-card${result.pass ? " auto-review-pass" : " auto-review-fail"}`;
+
+    const head = document.createElement("div");
+    head.className = "auto-review-head";
+    const title = document.createElement("span");
+    title.className = "auto-review-title";
+    title.textContent = i18nT("自动审核");
+    head.appendChild(title);
+    const modeBadge = document.createElement("span");
+    modeBadge.className = "auto-review-mode-badge";
+    modeBadge.textContent = result.mode === "visual" ? i18nT("视觉复核") : i18nT("确定性校验");
+    head.appendChild(modeBadge);
+
+    // 三档快速切换：点击即时生效写回设置；设置弹窗开着的话同步它的 select
+    const seg = document.createElement("div");
+    seg.className = "auto-review-modes";
+    const MODE_LABELS = { off: i18nT("关"), check: i18nT("仅校验"), visual: i18nT("含视觉") };
+    const MODE_TITLES = { off: "关闭自动审核", check: "仅确定性校验", visual: "确定性校验 + 视觉复核" };
+    const activeMode = AR?.normalizeMode ? AR.normalizeMode(currentSettings?.autoReview) : "check";
+    (AR?.MODES || ["off", "check", "visual"]).forEach((m) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "auto-review-mode-btn" + (m === activeMode ? " active" : "");
+      btn.textContent = MODE_LABELS[m] || m;
+      btn.title = MODE_TITLES[m] || "";
+      btn.addEventListener("click", () => {
+        currentSettings.autoReview = m;
+        try { persistSettings(); } catch (e) {}
+        seg.querySelectorAll(".auto-review-mode-btn").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        if (els.autoReviewSelect) els.autoReviewSelect.value = m;
+      });
+      seg.appendChild(btn);
+    });
+    head.appendChild(seg);
+    card.appendChild(head);
+
+    const body = document.createElement("div");
+    body.className = "auto-review-body";
+    const verdict = document.createElement("div");
+    verdict.className = "auto-review-verdict";
+    verdict.textContent = `${result.pass ? "✅" : "⚠️"} ${result.summary || (result.pass ? i18nT("审核通过") : i18nT("审核发现问题"))}`;
+    body.appendChild(verdict);
+    if (result.note) {
+      const note = document.createElement("div");
+      note.className = "auto-review-note";
+      note.textContent = result.note;
+      body.appendChild(note);
+    }
+    if (!result.pass && Array.isArray(result.issues) && result.issues.length) {
+      const list = document.createElement("ul");
+      list.className = "auto-review-issues";
+      result.issues.forEach((it) => {
+        if (!it) return;
+        const li = document.createElement("li");
+        let text = it.page ? `第 ${it.page} 页 · ${it.item || "问题"}` : String(it.item || "问题");
+        if (it.expected) text += `：应为 ${it.expected}`;
+        if (it.actual) text += `，实际 ${it.actual}`;
+        li.textContent = text;
+        list.appendChild(li);
+      });
+      body.appendChild(list);
+    }
+    // 用户明确要求：审核通过才把截图贴在卡片里（auto-review.js 也只在 pass 时回传 images）
+    if (result.pass && Array.isArray(result.images) && result.images.length) {
+      const grid = document.createElement("div");
+      grid.className = "auto-review-shots";
+      result.images.forEach((img) => {
+        if (!img || !img.dataUrl) return;
+        const fig = document.createElement("figure");
+        fig.className = "auto-review-shot";
+        const pic = document.createElement("img");
+        pic.src = img.dataUrl; // dataUrl 来自 pdf.js canvas.toDataURL，非模型文本
+        pic.alt = `第 ${img.page} 页截图`;
+        pic.loading = "lazy";
+        const cap = document.createElement("figcaption");
+        cap.textContent = `第 ${img.page} 页`;
+        fig.appendChild(pic);
+        fig.appendChild(cap);
+        grid.appendChild(fig);
+      });
+      body.appendChild(grid);
+    }
+    card.appendChild(body);
+    els.chatStream.appendChild(card);
+    els.chatStream.scrollTop = els.chatStream.scrollHeight;
   }
 
   // 纯逻辑（可单测）：本轮是否「执行了工具但最终回答在复述工具而非用数据」。
@@ -14102,12 +14255,14 @@
 
     // 设置 toggle 类 checkbox 自动持久化 —— 之前要点「保存」才生效，用户勾了直接关窗就丢了，
     // 现在 change 立即写 localStorage。presentation.js 用 loadSettings() 读到的就是最新值。
+    // （autoReviewSelect 是 select 不是 checkbox，但 change 后的处理同样是读表单 + 持久化，一并挂这里）
     const autoPersistCheckboxes = [
       "splitLayersOnInsertInput",
       "showToolCallLogsInput",
       "aiFollowHighlightInput",
       "mcpServerEnabledInput",
-      "updateAutoCheckInput"
+      "updateAutoCheckInput",
+      "autoReviewSelect"
     ];
     autoPersistCheckboxes.forEach((id) => {
       const el = els[id];
@@ -15307,7 +15462,8 @@
         "showToolCallLogsInput",
         "aiFollowHighlightInput",
         "mcpServerEnabledInput",
-        "updateAutoCheckInput"
+        "updateAutoCheckInput",
+        "autoReviewSelect"
       ].forEach((id) => {
         const el = els[id];
         if (!el) return;

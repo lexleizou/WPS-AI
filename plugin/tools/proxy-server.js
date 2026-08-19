@@ -62,6 +62,10 @@ const BACKUPS_ROOT = path.join(os.homedir(), ".lingxi-ai", "backups");
 const MAX_BACKUPS_PER_DOC = 20;
 try { fs.mkdirSync(BACKUPS_ROOT, { recursive: true }); } catch (e) { /* ignore */ }
 
+// 审阅临时文件根目录：~/.lingxi-ai/review/
+// 前端审阅产物（PDF 等）落在这里；不随启动创建，由 GET /review/dir 惰性建目录 + GC（48h / 20 个上限）。
+const REVIEW_DIR = path.join(LINGXI_HOME, "review");
+
 // 选择性启用宿主：各平台 WPS 共享插件清单 publish.xml 的候选路径。
 // 跟 post-install-*/pre-uninstall-* 的路径表保持一致——改这里记得同步那边。
 function publishXmlCandidates() {
@@ -1720,6 +1724,44 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // GET /review/dir —— 返回审阅临时目录（~/.lingxi-ai/review/）的绝对路径，前端把审阅产物落在这里。
+  // 顺手做 GC：先删 48 小时前的文件；若仍超过 20 个，按 mtime 最旧的先删，压到 20 个以内。
+  if (pathname === "/review/dir" && method === "GET") {
+    try {
+      fs.mkdirSync(REVIEW_DIR, { recursive: true });
+      const MAX_AGE_MS = 48 * 60 * 60 * 1000;
+      const MAX_FILES = 20;
+      const now = Date.now();
+      const files = fs.readdirSync(REVIEW_DIR)
+        .map((name) => {
+          const fp = path.join(REVIEW_DIR, name);
+          let st; try { st = fs.statSync(fp); } catch (e) { return null; }
+          return st.isFile() ? { fp, mtimeMs: st.mtimeMs } : null;
+        })
+        .filter(Boolean);
+      // 第一轮：按年龄删（超过 48h 的直接清掉）
+      const alive = [];
+      for (const f of files) {
+        if (now - f.mtimeMs > MAX_AGE_MS) {
+          try { fs.rmSync(f.fp, { force: true }); } catch (e) { /* 文件被占用就跳过 */ }
+        } else {
+          alive.push(f);
+        }
+      }
+      // 第二轮：按数量压——最旧的先删，留最新 20 个
+      if (alive.length > MAX_FILES) {
+        alive.sort((a, b) => a.mtimeMs - b.mtimeMs);
+        for (const f of alive.slice(0, alive.length - MAX_FILES)) {
+          try { fs.rmSync(f.fp, { force: true }); } catch (e) { /* 文件被占用就跳过 */ }
+        }
+      }
+      sendJson(res, 200, { ok: true, dir: REVIEW_DIR });
+    } catch (error) {
+      sendJson(res, 500, { ok: false, error: error.message });
+    }
+    return;
+  }
+
   // GET /service/litellm/models —— 代理读取详细模型目录；不会向 WebView 暴露 LiteLLM key。
   if (pathname === "/service/litellm/models" && method === "GET") {
     try {
@@ -3339,6 +3381,11 @@ const server = http.createServer(async (req, res) => {
       dir: BACKUPS_ROOT,
       safe: false // 清了就没法回滚老 turn 了
     },
+    review: {
+      label: "审阅临时文件 (review)",
+      dir: REVIEW_DIR,
+      safe: true // 纯临时产物，GET /review/dir 本身也会按 48h / 20 个上限自动 GC
+    },
     updates: {
       label: "临时更新包 (plugin.zip)",
       // /update/download 把 zip 落在 os.tmpdir() 下的 lingxi-update-*
@@ -3571,6 +3618,7 @@ function startProxyListenLadder(port, attemptsLeft) {
     });
     console.log("  /forward/<urlencoded-base>/* → <base>/* (通用转发，用于自定义端点)");
     console.log("  GET  /healthz → 服务签名 + 实际端口（前端探测自动定位用）");
+    console.log(`  GET  /review/dir → 审阅临时目录（惰性建目录 + GC：48h / 20 个上限）`);
     console.log("  POST /debug-log → 插件调试日志写到当前终端");
     console.log("  POST /local-image-info → 本地图片真实路径信息（Writer 插图路径兜底）");
     console.log("  POST /image-html-file → 为 Writer InsertFile 生成本地图片 HTML 兜底文件");

@@ -150,6 +150,8 @@
     uiLanguage: "auto",
     // AI 操作跟随提示：修改型工具成功后 Word 滚动跟随 / Excel 选中改动区域（follow-highlight.js）
     aiFollowHighlight: true,
+    // 改完自动审核（auto-review.js）：off=关 / check=仅确定性校验（默认）/ visual=含视觉审核
+    autoReview: "check",
     // 当前项目名：已改为「AI 每对话总结一次」（见 WpsAiProject），不再手填；保留字段仅为兼容
     currentProject: "",
     // 生图比例手动覆盖：非空时所有 generate_image 强制用它（忽略 AI 自选）；空 = 自动（原逻辑）
@@ -920,6 +922,10 @@
       }
       if (typeof parsed.aiFollowHighlight === "boolean") {
         merged.aiFollowHighlight = parsed.aiFollowHighlight;
+      }
+      // 改完自动审核档位：只接受合法值
+      if (["off", "check", "visual"].includes(parsed.autoReview)) {
+        merged.autoReview = parsed.autoReview;
       }
       // currentProject 已改为「AI 每对话总结」，不再从存量设置里恢复手填值（否则会盖住自动项目名）
       if (typeof parsed.imageSizeOverride === "string") {

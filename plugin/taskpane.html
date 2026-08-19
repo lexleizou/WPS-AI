@@ -366,6 +366,16 @@
                   <small class="field-tip">AI 修改文档时，Word 里视图滚动跟随改动位置、Excel 里选中改动区域，直观看到 AI 在动哪里。不改任何格式；不想被打断阅读视线可关闭。</small>
                 </div>
 
+                <label class="field">
+                  <span>改完自动审核</span>
+                  <select id="autoReviewSelect">
+                    <option value="off">关</option>
+                    <option value="check">仅确定性校验</option>
+                    <option value="visual">含视觉审核</option>
+                  </select>
+                  <small class="field-tip">AI 修改文档的一轮对话结束后，自动在后台复核改动并在对话末尾出一张审核卡片。「仅确定性校验」汇总工具执行结果（失败项）；「含视觉审核」额外导出 PDF 渲染改动页截图，发给多模态模型复核（需当前模型支持图片输入，审核通过才在卡片里贴截图）。</small>
+                </label>
+
                 <div class="field">
                   <span>启用的 Office 组件</span>
                   <div class="host-toggle-grid">

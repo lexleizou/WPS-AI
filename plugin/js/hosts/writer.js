@@ -1829,6 +1829,39 @@
     return { path: out, applied: true };
   }
 
+  // ---- 自动审核：段落锚点 §N → 页码定位 ----
+  // anchors 形如 ["§103","§136"]（§N = 段落序号，来自 writer-inspector 的文档地图）。
+  // 页码用 Range.Information(3)（wdActiveEndPageNumber）；pageCount 用 ComputeStatistics(2)
+  // （wdStatisticPages）。返回 { map: { "§103": 12 }, pageCount, selectionPage }：
+  // selectionPage 是当前选区所在页，给调用方在「无锚点」时兜底用。
+  // COM 全程 try/catch（本文件既有惯例）：单个锚点越界/取页失败只跳过，不炸整体。
+  async function getPageNumbersForAnchors(anchors) {
+    const doc = await ensureDocument();
+    const out = { map: {}, pageCount: 0, selectionPage: 0 };
+    try { out.pageCount = Number(doc.ComputeStatistics(2)) || 0; } catch (e) {}
+    try {
+      const sel = await getSelection();
+      const range = sel && (typeof sel.Range === "function" ? await sel.Range() : sel.Range);
+      if (range) out.selectionPage = Number(range.Information(3)) || 0;
+    } catch (e) {}
+    let paragraphs = null;
+    try { paragraphs = doc.Paragraphs; } catch (e) {}
+    if (paragraphs) {
+      (Array.isArray(anchors) ? anchors : []).forEach((anchor) => {
+        const match = /^§(\d+)$/.exec(String(anchor || "").trim());
+        if (!match) return;
+        const n = parseInt(match[1], 10);
+        if (!(n >= 1)) return;
+        try {
+          const para = paragraphs.Item(n);
+          const page = Number(para && para.Range && para.Range.Information(3)) || 0;
+          if (page >= 1) out.map[`§${n}`] = page;
+        } catch (e) { /* 段落序号越界 / COM 不支持：跳过这个锚点 */ }
+      });
+    }
+    return out;
+  }
+
   // ---- 段落格式 / 页眉页脚 / 页面设置 / 脚注 / 域刷新 / 文档属性 / 另存 / 打印（第一二梯队）----
   const WD_ALIGN = { left: 0, center: 1, right: 2, justify: 3, distribute: 4 };
   const numOr = (v) => (typeof v === "number" && isFinite(v)) ? v : null;
@@ -2352,6 +2385,7 @@
     revisionCount,               // 修订条数（给 UI 判断是否显示接受/回撤按钮）
     manageRevisions,             // 接受/拒绝全部修订 + 开关修订
     exportToPdf,                 // 导出为 PDF
+    getPageNumbersForAnchors,    // 自动审核：§N 段落锚点 → 页码 + 总页数 + 选区页
     formatParagraph,             // 段落格式（对齐/缩进/行距/段前段后）
     getTabStops,                 // 读取选区制表位
     setTabStops,                 // 重设选区制表位（读回校验）
