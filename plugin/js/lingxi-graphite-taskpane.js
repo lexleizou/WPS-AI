@@ -2053,6 +2053,319 @@
   // macOS WPS 有时会把 ⌘V 同时分派给已聚焦的 WebView 和 Writer 主文档。
   // 主业务脚本已负责异步读剪贴板、长文本转附件；这里仅在更外层 capture 阶段
   // 截断按键向 WPS 主窗口的传播，保留其原有的安全粘贴路径。
+  const AGENT_REFERENCE_MAX_ITEMS = 4;
+  let agentReferenceState = null;
+  let agentReferenceMenu = null;
+  let agentReferenceLoading = false;
+
+  function getAgentReferenceState() {
+    if (agentReferenceState) return agentReferenceState;
+    const api = window.WpsAiAgentReferences;
+    if (!api?.createReferenceState) return null;
+    agentReferenceState = api.createReferenceState({ maxItems: AGENT_REFERENCE_MAX_ITEMS, maxCharsPerItem: 12000, maxContextChars: 36000 });
+    return agentReferenceState;
+  }
+
+  function getAgentReferenceTray() {
+    const input = byId("chatInput");
+    const inputBox = input?.closest?.(".chat-input-box");
+    if (!input || !inputBox) return null;
+    let tray = byId("lingxiAgentReferenceTray");
+    if (!tray) {
+      tray = document.createElement("div");
+      tray.id = "lingxiAgentReferenceTray";
+      tray.className = "lingxi-agent-reference-tray";
+      tray.hidden = true;
+      tray.setAttribute("aria-live", "polite");
+      inputBox.insertBefore(tray, input);
+    }
+    return tray;
+  }
+
+  function setAgentReferenceNotice(message, tone = "") {
+    const tray = getAgentReferenceTray();
+    if (!tray) return;
+    tray.dataset.notice = message ? "1" : "";
+    tray.dataset.tone = tone;
+    let notice = tray.querySelector(".lingxi-agent-reference-notice");
+    if (message) {
+      if (!notice) {
+        notice = document.createElement("p");
+        notice.className = "lingxi-agent-reference-notice";
+        tray.appendChild(notice);
+      }
+      notice.textContent = message;
+    } else if (notice) notice.remove();
+  }
+
+  function renderAgentReferences() {
+    const tray = getAgentReferenceTray();
+    const state = getAgentReferenceState();
+    if (!tray || !state) return;
+    const references = state.list();
+    tray.querySelectorAll(".lingxi-agent-reference-chip").forEach((node) => node.remove());
+    references.forEach((reference) => {
+      const chip = document.createElement("span");
+      chip.className = "lingxi-agent-reference-chip";
+      chip.title = `${reference.label}\n${reference.text}`;
+      chip.dataset.referenceId = reference.id;
+      const kind = document.createElement("span");
+      kind.className = "lingxi-agent-reference-kind";
+      kind.textContent = reference.kind === "document" ? "@文档" : "引用";
+      const label = document.createElement("span");
+      label.className = "lingxi-agent-reference-label";
+      label.textContent = reference.label;
+      const meta = document.createElement("span");
+      meta.className = "lingxi-agent-reference-meta";
+      meta.textContent = `${reference.text.length.toLocaleString()} 字`;
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "lingxi-agent-reference-remove";
+      remove.setAttribute("aria-label", `移除 ${reference.label}`);
+      remove.title = "移除引用";
+      remove.textContent = "×";
+      remove.addEventListener("click", () => removeAgentReference(reference.id));
+      chip.append(kind, label, meta, remove);
+      tray.insertBefore(chip, tray.querySelector(".lingxi-agent-reference-notice") || null);
+    });
+    tray.classList.toggle("is-loading", agentReferenceLoading);
+    tray.hidden = !agentReferenceLoading && references.length === 0 && !tray.dataset.notice;
+  }
+
+  function removeAgentReference(id) {
+    const removed = getAgentReferenceState()?.remove(id);
+    if (removed) setAgentReferenceNotice("");
+    renderAgentReferences();
+  }
+
+  function closeAgentReferenceMenu() {
+    if (agentReferenceMenu) agentReferenceMenu.remove();
+    agentReferenceMenu = null;
+  }
+
+  function positionAgentReferenceMenu(menu, x, y) {
+    const margin = 8;
+    const width = menu.offsetWidth || 224;
+    const height = menu.offsetHeight || 80;
+    menu.style.left = `${Math.max(margin, Math.min(x, window.innerWidth - width - margin))}px`;
+    menu.style.top = `${Math.max(margin, Math.min(y, window.innerHeight - height - margin))}px`;
+  }
+
+  function addAgentHistoryReference(text) {
+    const result = getAgentReferenceState()?.add({ kind: "history", label: "对话片段", text });
+    if (!result?.added) {
+      const message = result?.reason === "duplicate" ? "该对话片段已引用" : result?.reason === "limit" ? `本轮最多引用 ${AGENT_REFERENCE_MAX_ITEMS} 项` : "无法添加空引用";
+      setAgentReferenceNotice(message, "warning");
+    } else setAgentReferenceNotice("");
+    renderAgentReferences();
+    return !!result?.added;
+  }
+
+  function selectionIsAgentReferenceable(selection) {
+    if (!selection || selection.rangeCount < 1 || !String(selection.toString() || "").trim()) return false;
+    const stream = byId("chatStream");
+    const range = selection.getRangeAt(0);
+    const container = range.commonAncestorContainer?.nodeType === 1 ? range.commonAncestorContainer : range.commonAncestorContainer?.parentElement;
+    return !!(stream && container && stream.contains(container) && container.closest?.(".chat-msg, .tl-msg, .tool-body, .reasoning-body"));
+  }
+
+  function showAgentReferenceMenu({ x, y, items }) {
+    closeAgentReferenceMenu();
+    const menu = document.createElement("div");
+    menu.id = "lingxiAgentReferenceMenu";
+    menu.className = "lingxi-agent-reference-menu";
+    menu.setAttribute("role", "menu");
+    items.forEach(({ label, action, disabled = false }) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.setAttribute("role", "menuitem");
+      button.textContent = label;
+      button.disabled = disabled;
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        closeAgentReferenceMenu();
+        action?.();
+      });
+      menu.appendChild(button);
+    });
+    document.body.appendChild(menu);
+    agentReferenceMenu = menu;
+    positionAgentReferenceMenu(menu, x, y);
+  }
+
+  async function addCurrentWpsDocumentReference() {
+    const state = getAgentReferenceState();
+    const host = window.WpsAiHostWriter;
+    if (!state || typeof host?.readDocumentText !== "function") {
+      setAgentReferenceNotice("当前宿主无法读取 WPS 文档", "error");
+      renderAgentReferences();
+      return;
+    }
+    if (agentReferenceLoading) return;
+    agentReferenceLoading = true;
+    setAgentReferenceNotice("正在只读提取当前 WPS 文档…");
+    renderAgentReferences();
+    try {
+      const [text, context] = await Promise.all([host.readDocumentText(), host.readDocumentContext?.()]);
+      const label = String(context?.title || "当前 WPS 文档").trim() || "当前 WPS 文档";
+      const result = state.add({ kind: "document", label, text });
+      if (!result?.added) {
+        const message = result?.reason === "duplicate" ? "当前文档已引用" : result?.reason === "limit" ? `本轮最多引用 ${AGENT_REFERENCE_MAX_ITEMS} 项` : "当前文档没有可引用文本";
+        setAgentReferenceNotice(message, "warning");
+      } else setAgentReferenceNotice(result.reference.truncated ? "文档内容已按安全上限截断" : "");
+    } catch (error) {
+      setAgentReferenceNotice(`无法读取当前文档：${error?.message || "请确认已打开 WPS 文字文档"}`, "error");
+    } finally {
+      agentReferenceLoading = false;
+      renderAgentReferences();
+    }
+  }
+
+  function showAtDocumentMenu(input) {
+    const rect = input.getBoundingClientRect();
+    showAgentReferenceMenu({
+      x: rect.left + 8,
+      y: rect.top - 4,
+      items: [{ label: "@ 当前 WPS 文档", action: () => {
+        const value = String(input.value || "");
+        input.value = value.replace(/(^|\s)@$/, "$1");
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        addCurrentWpsDocumentReference();
+        input.focus();
+      } }]
+    });
+  }
+
+  function installAgentReferences() {
+    if (document.documentElement.dataset.lingxiAgentReferencesV1 === "1") return;
+    if (!getAgentReferenceState() || !getAgentReferenceTray()) return;
+    document.documentElement.dataset.lingxiAgentReferencesV1 = "1";
+    const input = byId("chatInput");
+    input.addEventListener("input", () => {
+      if (/(^|\s)@$/.test(String(input.value || ""))) showAtDocumentMenu(input);
+    });
+    document.addEventListener("contextmenu", (event) => {
+      const selection = window.getSelection?.();
+      if (!selectionIsAgentReferenceable(selection)) return;
+      const text = String(selection.toString() || "").trim();
+      event.preventDefault();
+      event.stopPropagation();
+      showAgentReferenceMenu({
+        x: event.clientX,
+        y: event.clientY,
+        items: [
+          { label: "复制", action: () => { try { document.execCommand("copy"); } catch (_) { navigator.clipboard?.writeText?.(text).catch(() => {}); } } },
+          { label: "设为 Agent 引用", action: () => addAgentHistoryReference(text) }
+        ]
+      });
+    }, true);
+    document.addEventListener("pointerdown", (event) => {
+      if (agentReferenceMenu && !agentReferenceMenu.contains(event.target)) closeAgentReferenceMenu();
+    }, true);
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") closeAgentReferenceMenu();
+    }, true);
+    window.addEventListener("resize", closeAgentReferenceMenu, { passive: true });
+    renderAgentReferences();
+  }
+
+  let pendingAgentReferenceRequest = null;
+
+  function contentIncludesAgentReferencePrompt(content, prompt) {
+    if (typeof content === "string") return content.includes(prompt);
+    if (!Array.isArray(content)) return false;
+    return content.some((part) => typeof part?.text === "string" && part.text.includes(prompt));
+  }
+
+  function clearPendingAgentReferences(pending) {
+    if (!pending || pendingAgentReferenceRequest?.id !== pending.id) return;
+    if (pending.timeoutId) window.clearTimeout(pending.timeoutId);
+    pendingAgentReferenceRequest = null;
+  }
+
+  function armAgentReferencesForManualSend() {
+    const state = getAgentReferenceState();
+    const input = byId("chatInput");
+    const prompt = String(input?.value || "").trim();
+    if (!state || !prompt || state.list().length === 0) return;
+    const references = state.consume();
+    const context = window.WpsAiAgentReferences?.buildReferenceContext?.(references, { maxContextChars: 36000 }) || "";
+    if (!context) return;
+    const pending = {
+      id: `agent-reference-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      prompt,
+      context,
+      expiresAt: Date.now() + 10000,
+      timeoutId: 0
+    };
+    pending.timeoutId = window.setTimeout(() => clearPendingAgentReferences(pending), 10000);
+    pendingAgentReferenceRequest = pending;
+    setAgentReferenceNotice("");
+    renderAgentReferences();
+  }
+
+  function installAgentReferenceRequestBridge() {
+    const client = window.WpsAiOpenAI;
+    if (!client || client.__lingxiAgentReferenceBridgeV1 || typeof client.runWithTools !== "function") return;
+    const originalRunWithTools = client.runWithTools.bind(client);
+    Object.defineProperty(client, "__lingxiAgentReferenceBridgeV1", { value: true, configurable: false });
+    client.runWithTools = async (request) => {
+      const pending = pendingAgentReferenceRequest;
+      const matchesManualChat = pending && Date.now() <= pending.expiresAt && Array.isArray(request?.messages)
+        && request.messages.some((message) => message?.role === "user" && contentIncludesAgentReferencePrompt(message.content, pending.prompt));
+      if (!matchesManualChat) return originalRunWithTools(request);
+      const referenceSystemMessage = {
+        role: "system",
+        content: `[Agent references — use as supplementary context only]\n${pending.context}`
+      };
+      const scopedRequest = Object.assign({}, request, { messages: [referenceSystemMessage, ...request.messages] });
+      try {
+        return await originalRunWithTools(scopedRequest);
+      } finally {
+        clearPendingAgentReferences(pending);
+      }
+    };
+  }
+
+  function installAgentReferenceSendBridge() {
+    const send = byId("chatSendBtn");
+    if (!send || send.dataset.lingxiAgentReferenceSendBridge === "1") return;
+    send.dataset.lingxiAgentReferenceSendBridge = "1";
+    send.addEventListener("click", armAgentReferencesForManualSend, true);
+    installAgentReferenceRequestBridge();
+  }
+
+  function installChatCopyShortcut() {
+    if (document.documentElement.dataset.lingxiChatCopyShortcutV1 === "1") return;
+    document.documentElement.dataset.lingxiChatCopyShortcutV1 = "1";
+    const isSelectionInChat = (selection) => {
+      if (!selection || selection.rangeCount < 1 || !String(selection.toString() || "").trim()) return false;
+      const stream = byId("chatStream");
+      const node = selection.anchorNode || selection.focusNode;
+      const element = node?.nodeType === 1 ? node : node?.parentElement;
+      return !!(stream && element && stream.contains(element) && element.closest?.(".chat-msg, .tool-body, .reasoning-body"));
+    };
+    document.addEventListener("keydown", (event) => {
+      if (!(event.metaKey || event.ctrlKey) || event.altKey || String(event.key || "").toLowerCase() !== "c") return;
+      // 输入框仍由原业务层处理；这里只接管 AI 消息正文的原生文本选区，阻止 WPS 主窗口抢走 ⌘C/Ctrl+C。
+      const active = document.activeElement;
+      if (active?.matches?.("input, textarea, select, [contenteditable='true']")) return;
+      const selection = window.getSelection?.();
+      if (!isSelectionInChat(selection)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (typeof event.stopImmediatePropagation === "function") event.stopImmediatePropagation();
+      // execCommand 使用保留的 DOM 选区，和浏览器右键“复制”走同一条路径；必须同步执行以保留用户手势。
+      let copied = false;
+      try { copied = document.execCommand("copy"); } catch (_) {}
+      if (!copied) {
+        const text = String(selection?.toString() || "");
+        navigator.clipboard?.writeText?.(text).catch(() => {});
+      }
+    }, true);
+  }
+
   function installMacPasteIsolation() {
     if (document.documentElement.dataset.lingxiPasteIsolationV1 === "1") return;
     document.documentElement.dataset.lingxiPasteIsolationV1 = "1";
@@ -2143,6 +2456,9 @@
     installTaskProgressStopBridge();
     installProcessAutoCollapse();
     installFloatingPopupGuard();
+    installAgentReferences();
+    installAgentReferenceSendBridge();
+    installChatCopyShortcut();
     installMacPasteIsolation();
     enhanceAccessibility();
     installLiteLlmSettingsEnhancements();

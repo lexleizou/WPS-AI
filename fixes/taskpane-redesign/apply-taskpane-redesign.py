@@ -14,10 +14,13 @@ from pathlib import Path
 
 HOME = Path.home()
 FIX_DIR = HOME / ".lingxi-ai" / "fixes" / "taskpane-redesign"
+REFERENCE_FIX_DIR = HOME / ".lingxi-ai" / "fixes" / "agent-references"
 SOURCE_CSS = FIX_DIR / "lingxi-graphite-taskpane.css"
 SOURCE_JS = FIX_DIR / "lingxi-graphite-taskpane.js"
+SOURCE_REFERENCE_JS = REFERENCE_FIX_DIR / "lingxi-agent-references.js"
 TARGET_CSS_REL = Path("css/lingxi-graphite-taskpane.css")
 TARGET_JS_REL = Path("js/lingxi-graphite-taskpane.js")
+TARGET_REFERENCE_JS_REL = Path("js/lingxi-agent-references.js")
 TARGETS = [
     HOME / ".lingxi-ai" / "plugin-wps",
     HOME / ".lingxi-ai" / "plugin-et",
@@ -37,7 +40,7 @@ CSS_END = "<!-- LINGXI_GRAPHITE_TASKPANE_V1_CSS_END -->"
 JS_START = "<!-- LINGXI_GRAPHITE_TASKPANE_V1_JS_START -->"
 JS_END = "<!-- LINGXI_GRAPHITE_TASKPANE_V1_JS_END -->"
 CSS_BLOCK = f'''{CSS_START}\n    <link rel="stylesheet" href="./css/lingxi-graphite-taskpane.css" />\n    {CSS_END}'''
-JS_BLOCK = f'''{JS_START}\n    <script src="./js/lingxi-graphite-taskpane.js"></script>\n    {JS_END}'''
+JS_BLOCK = f'''{JS_START}\n    <script src="./js/lingxi-agent-references.js"></script>\n    <script src="./js/lingxi-graphite-taskpane.js"></script>\n    {JS_END}'''
 
 REQUIRED_IDS = [
     "modelSelect", "modelSelectBtn", "refreshModelsBtn", "newConversationBtn",
@@ -110,7 +113,7 @@ def backup_targets(reason: str) -> Path:
         entry = {"root": str(root), "files": {}}
         out = backup / target_key(root)
         out.mkdir(parents=True, exist_ok=True)
-        for rel in [Path("taskpane.html"), TARGET_CSS_REL, TARGET_JS_REL]:
+        for rel in [Path("taskpane.html"), TARGET_CSS_REL, TARGET_REFERENCE_JS_REL, TARGET_JS_REL]:
             src = root / rel
             if src.exists():
                 dest = out / rel
@@ -124,7 +127,7 @@ def backup_targets(reason: str) -> Path:
 
 
 def validate_source() -> None:
-    for path in [SOURCE_CSS, SOURCE_JS]:
+    for path in [SOURCE_CSS, SOURCE_REFERENCE_JS, SOURCE_JS]:
         if not path.is_file():
             raise RuntimeError(f"缺少补丁源文件: {path}")
     css = SOURCE_CSS.read_text(encoding="utf-8")
@@ -168,10 +171,13 @@ def apply() -> None:
         content = inject(taskpane.read_text(encoding="utf-8"))
         atomic_write(taskpane, content)
         css_target = root / TARGET_CSS_REL
+        reference_js_target = root / TARGET_REFERENCE_JS_REL
         js_target = root / TARGET_JS_REL
         css_target.parent.mkdir(parents=True, exist_ok=True)
+        reference_js_target.parent.mkdir(parents=True, exist_ok=True)
         js_target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(SOURCE_CSS, css_target)
+        shutil.copy2(SOURCE_REFERENCE_JS, reference_js_target)
         shutil.copy2(SOURCE_JS, js_target)
     print(f"APPLIED {len(TARGETS)} targets")
     print(f"BACKUP {backup}")
@@ -189,7 +195,7 @@ def remove() -> None:
             if after != before:
                 atomic_write(taskpane, after)
                 changed += 1
-        for rel in [TARGET_CSS_REL, TARGET_JS_REL]:
+        for rel in [TARGET_CSS_REL, TARGET_REFERENCE_JS_REL, TARGET_JS_REL]:
             path = root / rel
             if path.exists():
                 path.unlink()
@@ -200,12 +206,14 @@ def remove() -> None:
 def check() -> None:
     validate_source()
     source_css_hash = sha256(SOURCE_CSS)
+    source_reference_js_hash = sha256(SOURCE_REFERENCE_JS)
     source_js_hash = sha256(SOURCE_JS)
     errors = []
     rows = []
     for root in TARGETS:
         taskpane = root / "taskpane.html"
         css_target = root / TARGET_CSS_REL
+        reference_js_target = root / TARGET_REFERENCE_JS_REL
         js_target = root / TARGET_JS_REL
         if not taskpane.exists():
             errors.append(f"missing taskpane: {root}")
@@ -222,6 +230,8 @@ def check() -> None:
                 errors.append(f"missing id {rid}: {root}")
         if not css_target.exists() or sha256(css_target) != source_css_hash:
             errors.append(f"css mismatch: {root}")
+        if not reference_js_target.exists() or sha256(reference_js_target) != source_reference_js_hash:
+            errors.append(f"agent references js mismatch: {root}")
         if not js_target.exists() or sha256(js_target) != source_js_hash:
             errors.append(f"js mismatch: {root}")
         for rel in [Path("css/style.css"), Path("js/app.js")]:
@@ -234,7 +244,7 @@ def check() -> None:
         for error in errors:
             print("-", error)
         raise SystemExit(1)
-    print(json.dumps({"status": "ok", "targets": rows, "cssSha256": source_css_hash, "jsSha256": source_js_hash}, ensure_ascii=False, indent=2))
+    print(json.dumps({"status": "ok", "targets": rows, "cssSha256": source_css_hash, "agentReferencesJsSha256": source_reference_js_hash, "jsSha256": source_js_hash}, ensure_ascii=False, indent=2))
 
 
 def main() -> None:
