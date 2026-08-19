@@ -2648,6 +2648,40 @@
     installAgentReferenceRequestBridge();
   }
 
+  // LINGXI_CHAT_COPY_SYSTEM_MIRROR_V1：WPS macOS WebView 的 execCommand/navigator.clipboard
+  // 可能写入 WebView 内部隔离剪贴板或静默失败（用户在任何 App 都粘不出来）。
+  // 复制时始终经本地代理 /clipboard/text（pbcopy）把文本镜像到系统剪贴板。
+  function mirrorTextToSystemClipboard(text) {
+    const value = String(text || "");
+    if (!value) return Promise.resolve(false);
+    const url = window.WpsAiRuntime?.proxyUrl
+      ? window.WpsAiRuntime.proxyUrl("/clipboard/text")
+      : ((window.WpsAiRuntime?.proxyBase?.() || "http://127.0.0.1:3890") + "/clipboard/text");
+    return fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: value })
+    }).then((res) => res.json().catch(() => ({}))).then((json) => !!json?.ok).catch(() => false);
+  }
+
+  let copyHintTimer = 0;
+  function showCopyHint(text, isError) {
+    let hint = byId("lingxiCopyHint");
+    if (!hint) {
+      hint = document.createElement("div");
+      hint.id = "lingxiCopyHint";
+      hint.className = "lingxi-copy-hint";
+      hint.setAttribute("role", "status");
+      hint.setAttribute("aria-live", "polite");
+      document.body.appendChild(hint);
+    }
+    hint.textContent = text;
+    hint.classList.toggle("lingxi-copy-hint-error", !!isError);
+    hint.classList.add("visible");
+    window.clearTimeout(copyHintTimer);
+    copyHintTimer = window.setTimeout(() => hint.classList.remove("visible"), 1600);
+  }
+
   function installChatCopyShortcut() {
     if (document.documentElement.dataset.lingxiChatCopyShortcutV1 === "1") return;
     document.documentElement.dataset.lingxiChatCopyShortcutV1 = "1";
@@ -2667,14 +2701,37 @@
       event.preventDefault();
       event.stopPropagation();
       if (typeof event.stopImmediatePropagation === "function") event.stopImmediatePropagation();
+      const text = String(selection?.toString() || "");
       // execCommand 使用保留的 DOM 选区，和浏览器右键“复制”走同一条路径；必须同步执行以保留用户手势。
-      let copied = false;
-      try { copied = document.execCommand("copy"); } catch (_) {}
-      if (!copied) {
-        const text = String(selection?.toString() || "");
-        navigator.clipboard?.writeText?.(text).catch(() => {});
-      }
+      try { document.execCommand("copy"); } catch (_) {}
+      try { navigator.clipboard?.writeText?.(text).catch(() => {}); } catch (_) {}
+      // 关键兜底：WebView 内部剪贴板与系统隔离，必须经代理镜像到系统剪贴板；
+      // 提示同时充当诊断——若按 Cmd+C 连提示都不出现，说明按键未到达页面。
+      mirrorTextToSystemClipboard(text).then((ok) => {
+        showCopyHint(ok ? `已复制 ${text.length} 字符` : "复制失败：本地代理未响应", !ok);
+      });
     }, true);
+
+    // 输入框复制走 app.js 的 editable 处理器（其 navigator.clipboard 成功后不会走代理兜底），
+    // 这里包一层 WpsAiEditShortcuts，复制/剪切成功后同样镜像到系统剪贴板。
+    const shortcuts = window.WpsAiEditShortcuts;
+    if (shortcuts && !shortcuts.__lingxiSystemMirrorV1) {
+      try {
+        Object.defineProperty(shortcuts, "__lingxiSystemMirrorV1", { value: true });
+        for (const name of ["copySelectionToClipboard", "cutSelectionToClipboard"]) {
+          const original = shortcuts[name];
+          if (typeof original !== "function") continue;
+          shortcuts[name] = function mirrored(el, writeText, ...rest) {
+            const text = typeof shortcuts.getSelectedText === "function" ? shortcuts.getSelectedText(el) : "";
+            const result = original.call(this, el, writeText, ...rest);
+            Promise.resolve(result).then((ok) => {
+              if (ok !== false && text) mirrorTextToSystemClipboard(text);
+            }).catch(() => {});
+            return result;
+          };
+        }
+      } catch (_) {}
+    }
   }
 
   function installMacPasteIsolation() {

@@ -1422,3 +1422,24 @@ body.lingxi-graphite-v1 .lingxi-chat-anchor-feedback {
   font-size: 12px;
 }
 body.lingxi-graphite-v1 .lingxi-chat-anchor-feedback[data-tone="error"] { color: var(--lg-error); }
+
+/* Copy feedback hint: transient confirmation that Cmd+C reached the page and mirrored to the system clipboard. */
+body.lingxi-graphite-v1 .lingxi-copy-hint {
+  position: fixed;
+  z-index: 150;
+  right: 12px;
+  bottom: 12px;
+  max-width: min(300px, calc(100vw - 24px));
+  padding: 7px 10px;
+  border: 1px solid var(--lg-border);
+  border-radius: 6px;
+  background: var(--lg-bg-elevated);
+  color: var(--lg-text);
+  box-shadow: var(--lg-shadow-float);
+  font-size: 12px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .16s ease;
+}
+body.lingxi-graphite-v1 .lingxi-copy-hint.visible { opacity: 1; }
+body.lingxi-graphite-v1 .lingxi-copy-hint.lingxi-copy-hint-error { color: var(--lg-error); }
