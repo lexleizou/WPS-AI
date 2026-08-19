@@ -498,7 +498,36 @@
 
   // Document-wide review-and-edit requests use a conversational summary preview, never the full-document rewrite modal.
   const writePreviewGate = { phase: "idle", originalRequest: "", stagedRequest: "", mapSeen: false, autoPreviewPending: false, previewTurnStarted: false };
+  // 用户明确要求“先不要改”时，本轮由工具层硬性只读；模型的后续文字不能解除该状态。
+  const strictReadOnlyGate = { active: false, prompt: "", expiresAt: 0, timeoutId: 0 };
+  const STRICT_READ_ONLY_REQUEST = /(?:先|暂时|此次|本轮)?\s*(?:不要|别|勿|禁止)\s*(?:改|修改|改动|处理|写入|删除|调整)|(?:只|仅)\s*(?:检查|审查|核对|总结|汇报|读取|分析)(?:[^。；\n]{0,48})(?:不要|不做|不需|不必)\s*(?:改|修改|改动|处理|写入)|(?:只读|仅总结)/;
   const WRITE_PREVIEW_CONFIRM = /^(?:确认|同意|继续)(?:按预览)?(?:修改|执行|处理)?[。！!，,\s]*$/;
+
+  function isExplicitReadOnlyRequest(input) {
+    const text = String(input || "").trim();
+    if (!text || WRITE_PREVIEW_CONFIRM.test(text)) return false;
+    return STRICT_READ_ONLY_REQUEST.test(text);
+  }
+
+  function clearStrictReadOnlyGate() {
+    if (strictReadOnlyGate.timeoutId) window.clearTimeout(strictReadOnlyGate.timeoutId);
+    strictReadOnlyGate.active = false;
+    strictReadOnlyGate.prompt = "";
+    strictReadOnlyGate.expiresAt = 0;
+    strictReadOnlyGate.timeoutId = 0;
+    renderWritePreviewGate();
+  }
+
+  function armStrictReadOnlyGate(input) {
+    const prompt = String(input?.value || "").trim();
+    clearStrictReadOnlyGate();
+    if (!isExplicitReadOnlyRequest(prompt)) return;
+    strictReadOnlyGate.active = true;
+    strictReadOnlyGate.prompt = prompt;
+    strictReadOnlyGate.expiresAt = Date.now() + (30 * 60 * 1000);
+    strictReadOnlyGate.timeoutId = window.setTimeout(clearStrictReadOnlyGate, 30 * 60 * 1000);
+    renderWritePreviewGate();
+  }
   const DOCUMENT_WIDE_REVIEW_EDIT = /(?:URS|需求规格|用户需求|当前文档|整个文档|整份文档|全文|通篇|整篇).{0,120}(?:检查|审查|核对|复核).{0,180}(?:修改|修复|改写|润色|统一|补充|删除)|(?:检查|审查|核对|复核).{0,180}(?:全文|通篇|整篇|当前文档|整个文档|整份文档).{0,180}(?:修改|修复|改写|润色|统一|补充|删除)/i;
   const LONG_REWRITE_ROUTE_TERMS = [[/全文|通篇|整篇|全篇|逐段|各章节|整个文档/g, "当前文档"], [/改写|润色|扩写|精简|缩写|重写|调整结构|重新组织|统一语气|统一术语/g, "处理"]];
 
@@ -523,15 +552,17 @@
   function renderWritePreviewGate() {
     const bar = ensureWritePreviewGateBar();
     if (!bar) return;
-    const copy = writePreviewGate.phase === "mapping"
-      ? "修改安全流程：正在建立文档地图；本阶段不会写入 WPS。"
-      : writePreviewGate.phase === "map_received" || writePreviewGate.phase === "previewing"
-        ? "地图已建立：正在生成对话式修改预览；本阶段不会写入 WPS。"
-      : writePreviewGate.phase === "awaiting_confirmation"
-        ? "修改预览已就绪：请核对对话中的范围与锚点，回复“确认按预览修改”后才会写入 WPS。"
-        : writePreviewGate.phase === "approved"
-          ? "已确认预览：仅执行对话摘要中列出的最小修改。"
-          : "";
+    const copy = strictReadOnlyGate.active
+      ? "本轮只读：已禁止文档写入；仅检查、读取和总结。"
+      : writePreviewGate.phase === "mapping"
+        ? "修改安全流程：正在建立文档地图；本阶段不会写入 WPS。"
+        : writePreviewGate.phase === "map_received" || writePreviewGate.phase === "previewing"
+          ? "地图已建立：正在生成对话式修改预览；本阶段不会写入 WPS。"
+          : writePreviewGate.phase === "awaiting_confirmation"
+            ? "修改预览已就绪：请核对对话中的范围与锚点，回复“确认按预览修改”后才会写入 WPS。"
+            : writePreviewGate.phase === "approved"
+              ? "已确认预览：仅执行对话摘要中列出的最小修改。"
+              : "";
     bar.textContent = copy;
     bar.classList.toggle("hidden", !copy);
     bar.dataset.phase = writePreviewGate.phase;
@@ -611,13 +642,18 @@
     const originalExecute = registry.execute.bind(registry);
     registry.execute = async function guardedPreviewExecute(name, args, ctx) {
       const preConfirmation = ["mapping", "map_received", "previewing", "awaiting_confirmation"].includes(writePreviewGate.phase);
+      const strictReadOnly = strictReadOnlyGate.active && Date.now() <= strictReadOnlyGate.expiresAt;
       const mutating = name?.startsWith("wps_") && !!window.WpsAiHistory?.isMutatingTool?.(name);
       // 地图/审计/摘要预览必须完全不打断用户阅读；显式定位同样属于视图副作用。
       const viewChanging = ["reveal_location", "wps_goto_bookmark", "wps_set_view"].includes(name);
+      if (mutating && strictReadOnly) {
+        // 覆盖 wps_find_replace 等全局写入：本轮用户明确“先不要改”，模型无权自行升级为修改。
+        return { ok: false, error: "STRICT_READ_ONLY_REQUIRED：用户明确要求本轮只检查/总结，禁止调用任何会写入当前 WPS 文档的工具（包括 wps_find_replace）。等待下一条用户手动确认后才能修改。" };
+      }
       if (mutating && preConfirmation) {
         return { ok: false, error: "PREVIEW_GATE_REQUIRED：此任务必须先建立文档地图、在对话中给出修改摘要预览，并等待用户明确确认；当前禁止写入 WPS。" };
       }
-      if (viewChanging && preConfirmation) {
+      if (viewChanging && (preConfirmation || strictReadOnly)) {
         return { ok: false, error: "READ_ONLY_SCAN_NO_NAVIGATION：文档地图、审计和修改预览期间不得改变用户正在阅读的位置。请只返回锚点和摘要，写入成功后系统会自动定位到实际修改处。" };
       }
       const result = await originalExecute(name, args, ctx);
@@ -635,6 +671,47 @@
       return result;
     };
     registry.__lingxiPreviewGate = true;
+  }
+
+  function strictReadOnlyPromptMatches(messages, prompt) {
+    return Array.isArray(messages) && messages.some((message) => {
+      if (message?.role !== "user") return false;
+      if (typeof message.content === "string") return message.content.includes(prompt);
+      return Array.isArray(message.content) && message.content.some((part) => typeof part?.text === "string" && part.text.includes(prompt));
+    });
+  }
+
+  function installStrictReadOnlyGate() {
+    const input = byId("chatInput");
+    const send = byId("chatSendBtn");
+    const stop = byId("chatStopBtn");
+    if (!input || !send || !stop || send.dataset.lingxiStrictReadOnlyBound === "1") return;
+    send.dataset.lingxiStrictReadOnlyBound = "1";
+    // Capture 阶段先记录用户的原始意图；随后业务 send handler 才会清空输入框。
+    send.addEventListener("click", () => armStrictReadOnlyGate(input), true);
+
+    const client = window.WpsAiOpenAI;
+    if (client?.runWithTools && !client.__lingxiStrictReadOnlyBridgeV1) {
+      const originalRunWithTools = client.runWithTools.bind(client);
+      Object.defineProperty(client, "__lingxiStrictReadOnlyBridgeV1", { value: true, configurable: false });
+      client.runWithTools = async (request) => {
+        const strict = strictReadOnlyGate.active && Date.now() <= strictReadOnlyGate.expiresAt
+          && strictReadOnlyPromptMatches(request?.messages, strictReadOnlyGate.prompt);
+        if (!strict) return originalRunWithTools(request);
+        const guardMessage = {
+          role: "system",
+          content: "【严格只读边界】用户明确要求本轮仅检查、读取或总结，绝不修改当前 WPS 文档。不得调用任何写入工具（包括 wps_find_replace）；不得在本轮自行转为修改。只输出发现、证据锚点和建议，等待下一条用户手动确认。"
+        };
+        return originalRunWithTools(Object.assign({}, request, { messages: [guardMessage, ...request.messages] }));
+      };
+    }
+
+    let wasBusy = !stop.classList.contains("hidden");
+    new MutationObserver(() => {
+      const busy = !stop.classList.contains("hidden");
+      if (wasBusy && !busy && strictReadOnlyGate.active) clearStrictReadOnlyGate();
+      wasBusy = busy;
+    }).observe(stop, { attributes: true, attributeFilter: ["class"] });
   }
 
   // Persistent task data remains owned by the original todo_replace_all/todo_patch tools.
@@ -2449,6 +2526,7 @@
     ensureWritePreviewGateBar();
     installDocumentPreviewGate();
     installDocumentPreviewToolGate();
+    installStrictReadOnlyGate();
     installInspectionTimelineBridge();
     installInspectionBusyObserver();
     installTaskProgressOverlay();
