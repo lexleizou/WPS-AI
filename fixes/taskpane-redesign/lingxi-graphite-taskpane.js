@@ -2903,10 +2903,83 @@
     if (document.documentElement.dataset.lingxiPasteIsolationV1 === "1") return;
     document.documentElement.dataset.lingxiPasteIsolationV1 = "1";
     const isChatInput = (el) => el && (el.id === "chatInput" || el.closest?.("#chatInput"));
+
+    // macOS WPS 无 CommandBars.ReleaseFocus：Cmd+V 在 OS 层同时投递给 WebView 与主文档，
+    // 页面内 stopPropagation 拦不住原生侧。改为快照对比：按键瞬间记录文档状态，
+    // 延迟核对上次光标处是否被原生侧插入了与剪贴板完全相同的内容，命中则精确撤销。
+    async function readClipboardText() {
+      try {
+        const url = window.WpsAiRuntime?.proxyUrl
+          ? window.WpsAiRuntime.proxyUrl("/clipboard/text")
+          : ((window.WpsAiRuntime?.proxyBase?.() || "http://127.0.0.1:3890") + "/clipboard/text");
+        const res = await fetch(url, { cache: "no-store" });
+        const json = await res.json().catch(() => ({}));
+        return json?.ok ? String(json.text || "") : "";
+      } catch (error) { return ""; }
+    }
+
+    function snapshotDocumentState() {
+      try {
+        const application = window.WpsAiAddon?.getApplicationSync?.() || window.wps?.Application || null;
+        const doc = application?.ActiveDocument;
+        if (!doc) return null;
+        const sel = application?.Selection;
+        const selRange = sel ? (typeof sel.Range === "function" ? sel.Range() : sel.Range) : null;
+        const cursorStart = Number(selRange?.Start);
+        const contentEnd = Number(doc.Content?.End);
+        if (!Number.isFinite(cursorStart) || !Number.isFinite(contentEnd)) return null;
+        return { application, doc, cursorStart, contentEnd };
+      } catch (error) { return null; }
+    }
+
+    function rangeText(doc, start, end) {
+      try { return typeof doc.Range === "function" ? String(doc.Range(start, end)?.Text || "") : ""; } catch (error) { return ""; }
+    }
+
+    function revertDuplicatedDocumentPaste(snap, pastedText) {
+      if (!snap || !pastedText) return false;
+      const { doc, cursorStart, contentEnd } = snap;
+      const newEnd = Number(doc.Content?.End);
+      if (!Number.isFinite(newEnd) || newEnd - contentEnd !== pastedText.length) return false;
+      const duplicated = rangeText(doc, cursorStart, cursorStart + pastedText.length);
+      if (duplicated !== pastedText) return false;
+      // 优先 Undo：连同修订记录一起干净撤掉插入；不可用时退化为精确删除该重复范围。
+      try { if (typeof doc.Undo === "function") { doc.Undo(1); if (rangeText(doc, cursorStart, cursorStart + pastedText.length) !== pastedText) return true; } } catch (error) {}
+      try { if (typeof doc.Undo === "function") { doc.Undo(); if (rangeText(doc, cursorStart, cursorStart + pastedText.length) !== pastedText) return true; } } catch (error) {}
+      try {
+        const range = typeof doc.Range === "function" ? doc.Range(cursorStart, cursorStart + pastedText.length) : null;
+        if (range && rangeText(doc, cursorStart, cursorStart + pastedText.length) === pastedText) {
+          if (typeof range.Delete === "function") { range.Delete(); return true; }
+          range.Text = "";
+          return true;
+        }
+      } catch (error) {}
+      return false;
+    }
+
+    function scheduleDocumentPasteDedupe(snap) {
+      if (!snap) return;
+      window.setTimeout(async () => {
+        const pastedText = await readClipboardText();
+        if (!pastedText) return; // 图片等非文本剪贴板无法按文本比对，放弃（不动作比误删安全）
+        for (const delay of [0, 450, 1000]) {
+          if (delay) await new Promise((resolve) => window.setTimeout(resolve, delay));
+          try {
+            if (revertDuplicatedDocumentPaste(snap, pastedText)) {
+              showCopyHint("已撤销文档侧的重复粘贴");
+              return;
+            }
+          } catch (error) { return; }
+        }
+      }, 350);
+    }
+
     document.addEventListener("keydown", (ev) => {
       if (!(ev.metaKey || ev.ctrlKey) || ev.altKey || String(ev.key || "").toLowerCase() !== "v") return;
       const target = document.activeElement;
       if (!isChatInput(target)) return;
+      // 原生双投递发生前同步快照文档状态，随后检测并撤销文档侧的重复粘贴。
+      scheduleDocumentPasteDedupe(snapshotDocumentState());
       // app.js 的 capture handler 已先建立 pendingManualPaste；阻止后由它的 clipboard fallback
       // 只向 TaskPane 写入一次，从而不污染左侧正文。
       ev.preventDefault();
