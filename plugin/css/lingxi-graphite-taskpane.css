@@ -1391,3 +1391,33 @@ body.lingxi-graphite-v1 .lingxi-agent-reference-menu button:focus-visible { back
 @media (max-width: 420px) {
   body.lingxi-graphite-v1 .lingxi-agent-reference-chip { max-width: calc(100vw - 44px); }
 }
+
+/* Chat paragraph anchors: user-triggered view navigation only. */
+body.lingxi-graphite-v1 .lingxi-chat-anchor-link {
+  display: inline;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px dotted currentColor;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  line-height: inherit;
+}
+body.lingxi-graphite-v1 .lingxi-chat-anchor-link:hover { color: var(--lg-primary); border-bottom-style: solid; }
+body.lingxi-graphite-v1 .lingxi-chat-anchor-link:disabled { cursor: wait; opacity: .55; }
+body.lingxi-graphite-v1 .lingxi-chat-anchor-feedback {
+  position: fixed;
+  z-index: 140;
+  right: 12px;
+  bottom: 12px;
+  max-width: min(300px, calc(100vw - 24px));
+  padding: 7px 10px;
+  border: 1px solid var(--lg-border);
+  border-radius: 6px;
+  background: var(--lg-bg-elevated);
+  color: var(--lg-text);
+  box-shadow: var(--lg-shadow-float);
+  font-size: 12px;
+}
+body.lingxi-graphite-v1 .lingxi-chat-anchor-feedback[data-tone="error"] { color: var(--lg-error); }

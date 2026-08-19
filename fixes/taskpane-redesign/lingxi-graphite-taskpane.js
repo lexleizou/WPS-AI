@@ -2130,6 +2130,123 @@
   // macOS WPS 有时会把 ⌘V 同时分派给已聚焦的 WebView 和 Writer 主文档。
   // 主业务脚本已负责异步读剪贴板、长文本转附件；这里仅在更外层 capture 阶段
   // 截断按键向 WPS 主窗口的传播，保留其原有的安全粘贴路径。
+  const CHAT_PARAGRAPH_ANCHOR = /§([1-9]\d*)/g;
+  let chatAnchorFeedbackTimer = 0;
+  let chatAnchorDecorateScheduled = false;
+
+  function extractParagraphAnchors(text) {
+    const anchors = new Set();
+    const source = String(text || "");
+    for (const match of source.matchAll(CHAT_PARAGRAPH_ANCHOR)) anchors.add(`§${match[1]}`);
+    return Array.from(anchors);
+  }
+
+  function showChatAnchorFeedback(message, tone = "") {
+    let node = byId("lingxiChatAnchorFeedback");
+    if (!node) {
+      node = document.createElement("div");
+      node.id = "lingxiChatAnchorFeedback";
+      node.className = "lingxi-chat-anchor-feedback";
+      node.setAttribute("role", "status");
+      node.setAttribute("aria-live", "polite");
+      document.body.appendChild(node);
+    }
+    node.textContent = message;
+    node.dataset.tone = tone;
+    node.hidden = false;
+    if (chatAnchorFeedbackTimer) window.clearTimeout(chatAnchorFeedbackTimer);
+    chatAnchorFeedbackTimer = window.setTimeout(() => { node.hidden = true; }, 2400);
+  }
+
+  async function revealChatAnchor(anchor) {
+    const match = /^§([1-9]\d*)$/.exec(String(anchor || "").trim());
+    if (!match) throw new Error("无效段落锚点。");
+    const info = await window.WpsAiDocument?.getHostInfo?.();
+    if (info?.host && info.host !== "wps") throw new Error("段落锚点定位仅适用于 WPS 文字文档。");
+    const application = window.WpsAiAddon?.getApplicationSync?.() || window.wps?.Application || null;
+    const document = application?.ActiveDocument;
+    const paragraphs = document?.Paragraphs || document?.Content?.Paragraphs;
+    const index = Number(match[1]);
+    const count = Number(paragraphs?.Count) || 0;
+    if (!document || !paragraphs || index > count) throw new Error(`当前文档没有 ${anchor}。`);
+    const range = paragraphs.Item(index)?.Range;
+    if (!range) throw new Error(`无法读取 ${anchor} 的位置。`);
+    // 只移动视口，绝不 Select：用户可点击定位，同时不改变 AI 的下一次写入落点。
+    const windowRef = application?.ActiveWindow;
+    if (!windowRef?.ScrollIntoView) throw new Error("当前 WPS 窗口不支持视图定位。");
+    windowRef.ScrollIntoView(range, true);
+    return { anchor, revealed: true };
+  }
+
+  function shouldDecorateChatAnchorText(node) {
+    const parent = node?.parentElement;
+    if (!parent || !String(node.nodeValue || "").includes("§")) return false;
+    return !parent.closest("button, a, pre, code, .lingxi-chat-anchor-link, [data-lingxi-anchor-decorated='1']");
+  }
+
+  function decorateChatAnchors(root) {
+    if (!root || !root.querySelectorAll) return;
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode(node) { return shouldDecorateChatAnchorText(node) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT; }
+    });
+    const nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    nodes.forEach((node) => {
+      const text = String(node.nodeValue || "");
+      const matches = Array.from(text.matchAll(CHAT_PARAGRAPH_ANCHOR));
+      if (!matches.length || !node.parentNode) return;
+      const fragment = document.createDocumentFragment();
+      let cursor = 0;
+      matches.forEach((match) => {
+        const anchor = `§${match[1]}`;
+        fragment.appendChild(document.createTextNode(text.slice(cursor, match.index)));
+        const link = document.createElement("button");
+        link.type = "button";
+        link.className = "lingxi-chat-anchor-link";
+        link.dataset.anchor = anchor;
+        link.title = `跳转到 Word ${anchor}`;
+        link.setAttribute("aria-label", `跳转到 Word 段落 ${anchor}`);
+        link.textContent = anchor;
+        fragment.appendChild(link);
+        cursor = Number(match.index) + anchor.length;
+      });
+      fragment.appendChild(document.createTextNode(text.slice(cursor)));
+      node.parentNode.replaceChild(fragment, node);
+    });
+  }
+
+  function installChatAnchorNavigation() {
+    const stream = byId("chatStream");
+    if (!stream || stream.dataset.lingxiChatAnchorNavigation === "1") return;
+    stream.dataset.lingxiChatAnchorNavigation = "1";
+    const decorate = () => {
+      chatAnchorDecorateScheduled = false;
+      decorateChatAnchors(stream);
+    };
+    const scheduleDecorate = () => {
+      if (chatAnchorDecorateScheduled) return;
+      chatAnchorDecorateScheduled = true;
+      window.requestAnimationFrame(decorate);
+    };
+    stream.addEventListener("click", async (event) => {
+      const link = event.target?.closest?.(".lingxi-chat-anchor-link");
+      if (!link || !stream.contains(link)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      link.disabled = true;
+      try {
+        const result = await revealChatAnchor(link.dataset.anchor);
+        showChatAnchorFeedback(`已定位 ${result.anchor}`);
+      } catch (error) {
+        showChatAnchorFeedback(error?.message || "无法定位该锚点。", "error");
+      } finally {
+        link.disabled = false;
+      }
+    });
+    new MutationObserver(scheduleDecorate).observe(stream, { childList: true, characterData: true, subtree: true });
+    scheduleDecorate();
+  }
+
   const AGENT_REFERENCE_MAX_ITEMS = 4;
   let agentReferenceState = null;
   let agentReferenceMenu = null;
@@ -2544,6 +2661,7 @@
     installTaskProgressStopBridge();
     installProcessAutoCollapse();
     installFloatingPopupGuard();
+    installChatAnchorNavigation();
     installAgentReferences();
     installAgentReferenceSendBridge();
     installChatCopyShortcut();
