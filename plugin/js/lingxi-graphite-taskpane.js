@@ -1163,6 +1163,30 @@
     }
   }
 
+  function syncModelControlWidth() {
+    const wrap = document.querySelector(".model-select-wrap.lg-composer-model");
+    const label = byId("modelSelectLabel");
+    const button = byId("modelSelectBtn");
+    if (!wrap || !label || !button) return;
+    const text = String(label.textContent || "").trim();
+    if (!text) return;
+    const probe = document.createElement("span");
+    const style = window.getComputedStyle(label);
+    probe.textContent = text;
+    probe.style.cssText = `position:fixed;visibility:hidden;pointer-events:none;white-space:nowrap;font:${style.font};letter-spacing:${style.letterSpacing};`;
+    document.body.appendChild(probe);
+    const textWidth = Math.ceil(probe.getBoundingClientRect().width);
+    probe.remove();
+    const viewportWidth = document.documentElement.clientWidth || window.innerWidth || 0;
+    const maximum = Math.max(128, Math.min(360, viewportWidth - 160));
+    const desired = Math.max(128, Math.min(maximum, textWidth + 36));
+    wrap.style.setProperty("--lg-model-control-width", `${desired}px`);
+    if (wrap.dataset.lingxiModelWidthBound !== "1") {
+      wrap.dataset.lingxiModelWidthBound = "1";
+      window.addEventListener("resize", syncModelControlWidth, { passive: true });
+    }
+  }
+
   function syncModelLabel() {
     const select = byId("modelSelect");
     const label = byId("modelSelectLabel");
@@ -1174,6 +1198,7 @@
     const full = rendered.includes("·") ? rendered : (label.title || rendered || modelId);
     label.title = full;
     if (button) button.title = `当前模型：${modelId}（点击选择）`;
+    syncModelControlWidth();
     // 业务层持续渲染完整模型名；不覆盖可见文案，避免内容被缩写或与业务层互相覆盖造成闪烁。
   }
 
