@@ -2663,6 +2663,14 @@
     if (!send || send.dataset.lingxiAgentReferenceSendBridge === "1") return;
     send.dataset.lingxiAgentReferenceSendBridge = "1";
     send.addEventListener("click", armAgentReferencesForManualSend, true);
+    // Enter 发送不经过发送按钮点击：app.js 在 chatInput 上监听 keydown 直接 sendChat。
+    // 必须在 document capture 阶段提前武装引用，保证 runWithTools 发起前 pending 已就位。
+    document.addEventListener("keydown", (ev) => {
+      if (ev.key !== "Enter" || ev.shiftKey || ev.isComposing) return;
+      const input = byId("chatInput");
+      if (!input || (ev.target !== input && !input.contains(ev.target))) return;
+      armAgentReferencesForManualSend();
+    }, true);
     installAgentReferenceRequestBridge();
   }
 
