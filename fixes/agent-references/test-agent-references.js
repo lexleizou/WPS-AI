@@ -31,3 +31,8 @@ assert.match(buildReferenceContext(consumed, { maxContextChars: 30 }), /Agent �
 assert.ok(buildReferenceContext(consumed, { maxContextChars: 30 }).length <= 30);
 
 console.log("PASS agent reference state");
+const selRef = normalizeReference({ kind: "selection", label: "§95–§100 选区", text: "选中内容" });
+assert.equal(selRef.kind, "selection");
+const selCtx = buildReferenceContext([{ kind: "selection", label: "§95–§100 选区", text: "选中内容" }]);
+assert(selCtx.includes("[Word 选区：§95–§100 选区]"), "selection heading missing");
+console.log("PASS selection reference kind");

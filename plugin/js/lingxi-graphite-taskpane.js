@@ -2435,6 +2435,14 @@
     if (!tray || !state) return;
     const references = state.list();
     tray.querySelectorAll(".lingxi-agent-reference-chip").forEach((node) => node.remove());
+    // 常驻动作 chip：一键把 Word 文档当前选区加为引用（带 §位置锚点）。
+    const action = document.createElement("button");
+    action.type = "button";
+    action.className = "lingxi-agent-reference-chip lingxi-agent-reference-action";
+    action.title = "读取左侧 Word 文档中的当前选区，连同 §位置一起附加到下一轮请求";
+    action.textContent = "＠ 引用 Word 选区";
+    action.addEventListener("click", () => addWordSelectionReference());
+    tray.insertBefore(action, tray.querySelector(".lingxi-agent-reference-notice") || null);
     references.forEach((reference) => {
       const chip = document.createElement("span");
       chip.className = "lingxi-agent-reference-chip";
@@ -2442,7 +2450,7 @@
       chip.dataset.referenceId = reference.id;
       const kind = document.createElement("span");
       kind.className = "lingxi-agent-reference-kind";
-      kind.textContent = reference.kind === "document" ? "@文档" : "引用";
+      kind.textContent = reference.kind === "document" ? "@文档" : reference.kind === "selection" ? "选区" : "引用";
       const label = document.createElement("span");
       label.className = "lingxi-agent-reference-label";
       label.textContent = reference.label;
@@ -2460,7 +2468,8 @@
       tray.insertBefore(chip, tray.querySelector(".lingxi-agent-reference-notice") || null);
     });
     tray.classList.toggle("is-loading", agentReferenceLoading);
-    tray.hidden = !agentReferenceLoading && references.length === 0 && !tray.dataset.notice;
+    // 有常驻动作 chip，托盘保持可见，方便随时引用 Word 选区。
+    tray.hidden = false;
   }
 
   function removeAgentReference(id) {
@@ -2553,18 +2562,75 @@
     }
   }
 
+  // 在 Paragraphs 集合中二分查找包含指定故事位置的段落锚点（段落范围连续递增，~1200 段仅需 ~11 次 COM 调用）。
+  function findParagraphAnchorAt(document, position) {
+    const paragraphs = document?.Paragraphs || document?.Content?.Paragraphs;
+    const total = Number(paragraphs?.Count) || 0;
+    if (!paragraphs || total < 1 || !Number.isFinite(position)) return null;
+    let lo = 1, hi = total;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      let range = null;
+      try { range = paragraphs.Item(mid)?.Range; } catch (error) { return null; }
+      const start = Number(range?.Start), end = Number(range?.End);
+      if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+      if (position >= end) lo = mid + 1;
+      else if (position < start) hi = mid - 1;
+      else return mid;
+    }
+    return null;
+  }
+
+  // 引用 Word 文档选区：用户在左侧文档选中内容后，把选区文本 + §位置锚点作为引用 chip。
+  async function addWordSelectionReference() {
+    const state = getAgentReferenceState();
+    if (!state) return;
+    try {
+      const application = window.WpsAiAddon?.getApplicationSync?.() || window.wps?.Application
+        || (window.WpsAiAddon?.getApplication ? await window.WpsAiAddon.getApplication() : null);
+      const doc = application?.ActiveDocument;
+      const sel = application?.Selection;
+      if (!doc || !sel) throw new Error("未检测到 WPS 文字文档或选区");
+      const range = typeof sel.Range === "function" ? sel.Range() : sel.Range;
+      const text = String(sel.Text || range?.Text || "").trim();
+      if (!text) {
+        setAgentReferenceNotice("请先在左侧 Word 文档中选中要引用的内容", "warning");
+        renderAgentReferences();
+        return;
+      }
+      let label = "Word 选区";
+      const start = Number(range?.Start), end = Number(range?.End);
+      if (Number.isFinite(start) && Number.isFinite(end)) {
+        const first = findParagraphAnchorAt(doc, start);
+        const last = findParagraphAnchorAt(doc, Math.max(start, end - 1));
+        if (first) label = last && last !== first ? `§${first}–§${last} 选区` : `§${first} 选区`;
+      }
+      const result = state.add({ kind: "selection", label, text });
+      if (!result?.added) {
+        const message = result?.reason === "duplicate" ? "该选区已引用" : result?.reason === "limit" ? `本轮最多引用 ${AGENT_REFERENCE_MAX_ITEMS} 项` : "无法添加空引用";
+        setAgentReferenceNotice(message, "warning");
+      } else setAgentReferenceNotice(result.reference.truncated ? "选区内容已按安全上限截断" : "");
+    } catch (error) {
+      setAgentReferenceNotice(`无法读取 Word 选区：${error?.message || "未知错误"}`, "error");
+    }
+    renderAgentReferences();
+  }
+
   function showAtDocumentMenu(input) {
     const rect = input.getBoundingClientRect();
+    const consumeAt = () => {
+      const value = String(input.value || "");
+      input.value = value.replace(/(^|\s)@$/, "$1");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.focus();
+    };
     showAgentReferenceMenu({
       x: rect.left + 8,
       y: rect.top - 4,
-      items: [{ label: "@ 当前 WPS 文档", action: () => {
-        const value = String(input.value || "");
-        input.value = value.replace(/(^|\s)@$/, "$1");
-        input.dispatchEvent(new Event("input", { bubbles: true }));
-        addCurrentWpsDocumentReference();
-        input.focus();
-      } }]
+      items: [
+        { label: "@ 当前 WPS 文档", action: () => { consumeAt(); addCurrentWpsDocumentReference(); } },
+        { label: "@ Word 选区（带 §位置）", action: () => { consumeAt(); addWordSelectionReference(); } }
+      ]
     });
   }
 

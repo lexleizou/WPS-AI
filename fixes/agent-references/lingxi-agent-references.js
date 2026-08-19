@@ -21,10 +21,10 @@
 
   function normalizeReference(input, options) {
     const config = Object.assign({}, DEFAULTS, options || {});
-    const kind = input?.kind === "document" ? "document" : "history";
+    const kind = input?.kind === "document" ? "document" : input?.kind === "selection" ? "selection" : "history";
     const text = clampText(input?.text, config.maxCharsPerItem);
     if (!text) return null;
-    const fallbackLabel = kind === "document" ? "当前 WPS 文档" : "对话片段";
+    const fallbackLabel = kind === "document" ? "当前 WPS 文档" : kind === "selection" ? "Word 选区" : "对话片段";
     const label = clampText(input?.label || fallbackLabel, 120) || fallbackLabel;
     const reference = { id: String(input?.id || ""), kind, label, text, truncated: String(input?.text || "").trim().length > text.length };
     reference.id = reference.id || referenceFingerprint(reference);
@@ -37,7 +37,7 @@
     for (const item of Array.isArray(references) ? references : []) {
       const ref = normalizeReference(item, config);
       if (!ref) continue;
-      const heading = ref.kind === "document" ? `[@文档：${ref.label}]` : `[Agent 引用：${ref.label}]`;
+      const heading = ref.kind === "document" ? `[@文档：${ref.label}]` : ref.kind === "selection" ? `[Word 选区：${ref.label}]` : `[Agent 引用：${ref.label}]`;
       const suffix = ref.truncated ? "\n（内容已按安全上限截断）" : "";
       parts.push(`${heading}\n${ref.text}${suffix}`);
     }
