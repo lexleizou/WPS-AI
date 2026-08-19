@@ -16,3 +16,5 @@ assert(js.includes("copySelectionToClipboard") && js.includes("cutSelectionToCli
 assert(css.includes(".lingxi-copy-hint"), "copy hint styles missing");
 
 console.log("PASS chat copy system clipboard mirror");
+assert(js.includes('addEventListener("copy"'), "copy event listener missing (macOS menu key equivalent path)");
+assert(js.includes('clipboardData.setData("text/plain"'), "copy event must set clipboardData");

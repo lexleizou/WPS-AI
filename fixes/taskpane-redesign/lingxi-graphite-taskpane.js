@@ -2556,7 +2556,13 @@
         x: event.clientX,
         y: event.clientY,
         items: [
-          { label: "复制", action: () => { try { document.execCommand("copy"); } catch (_) { navigator.clipboard?.writeText?.(text).catch(() => {}); } } },
+          { label: "复制", action: () => {
+            try { document.execCommand("copy"); } catch (_) {}
+            try { navigator.clipboard?.writeText?.(text).catch(() => {}); } catch (_) {}
+            mirrorTextToSystemClipboard(text).then((ok) => {
+              showCopyHint(ok ? `已复制 ${text.length} 字符` : "复制失败：本地代理未响应", !ok);
+            });
+          } },
           { label: "设为 Agent 引用", action: () => addAgentHistoryReference(text) }
         ]
       });
@@ -2707,6 +2713,23 @@
       try { navigator.clipboard?.writeText?.(text).catch(() => {}); } catch (_) {}
       // 关键兜底：WebView 内部剪贴板与系统隔离，必须经代理镜像到系统剪贴板；
       // 提示同时充当诊断——若按 Cmd+C 连提示都不出现，说明按键未到达页面。
+      mirrorTextToSystemClipboard(text).then((ok) => {
+        showCopyHint(ok ? `已复制 ${text.length} 字符` : "复制失败：本地代理未响应", !ok);
+      });
+    }, true);
+
+    // macOS 上 Cmd+C 是菜单键等价：WPS 原生菜单可能直接消费按键，页面收不到 keydown，
+    // 但 WebView 处理 copy: 动作时会派发 DOM copy 事件。补一条 copy 事件链路。
+    document.addEventListener("copy", (event) => {
+      const selection = window.getSelection?.();
+      if (!isSelectionInChat(selection)) return;
+      const text = String(selection?.toString() || "");
+      try {
+        if (event.clipboardData?.setData) {
+          event.clipboardData.setData("text/plain", text);
+          event.preventDefault();
+        }
+      } catch (_) {}
       mirrorTextToSystemClipboard(text).then((ok) => {
         showCopyHint(ok ? `已复制 ${text.length} 字符` : "复制失败：本地代理未响应", !ok);
       });
