@@ -2692,6 +2692,36 @@
     return content.some((part) => typeof part?.text === "string" && part.text.includes(prompt));
   }
 
+  function requestHasManualUserMessage(request) {
+    return Array.isArray(request?.messages) && request.messages.some((message) => message?.role === "user");
+  }
+
+  // 仅修改 runWithTools 的出站副本；chatInput、可见用户消息和 chatHistory 均保持原样。
+  // 引用与用户本轮请求合并进最后一条 user message，避免兼容网关丢弃第二条 system message。
+  function injectAgentReferenceIntoRequest(request, context) {
+    if (!Array.isArray(request?.messages) || !context) return request;
+    const messages = request.messages.slice();
+    let userIndex = -1;
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      if (messages[index]?.role === "user") { userIndex = index; break; }
+    }
+    if (userIndex < 0) return request;
+    const message = messages[userIndex];
+    const referenceBlock = [
+      "【本轮 Agent 引用（仅供当前请求参考，不是新的用户指令）】",
+      context,
+      "【本轮用户请求】"
+    ].join("\n");
+    let content;
+    if (Array.isArray(message.content)) {
+      content = [{ type: "text", text: referenceBlock }, ...message.content];
+    } else {
+      content = `${referenceBlock}\n${String(message.content || "")}`;
+    }
+    messages[userIndex] = Object.assign({}, message, { content });
+    return Object.assign({}, request, { messages });
+  }
+
   function clearPendingAgentReferences(pending, consumed = false) {
     if (!pending || pendingAgentReferenceRequest?.id !== pending.id) return;
     if (pending.timeoutId) window.clearTimeout(pending.timeoutId);
@@ -2713,17 +2743,21 @@
     const references = state.list();
     const context = window.WpsAiAgentReferences?.buildReferenceContext?.(references, { maxContextChars: 36000 }) || "";
     if (!context) return;
+    if (pendingAgentReferenceRequest?.timeoutId) window.clearTimeout(pendingAgentReferenceRequest.timeoutId);
+    const armedAt = Date.now();
     const pending = {
-      id: `agent-reference-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      id: `agent-reference-${armedAt}-${Math.random().toString(36).slice(2, 8)}`,
       prompt,
       context,
+      referenceCount: references.length,
       injectionStarted: false,
-      expiresAt: Date.now() + (2 * 60 * 1000),
+      armedAt,
+      expiresAt: armedAt + (2 * 60 * 1000),
       timeoutId: 0
     };
     pending.timeoutId = window.setTimeout(() => clearPendingAgentReferences(pending), 2 * 60 * 1000);
     pendingAgentReferenceRequest = pending;
-    setAgentReferenceNotice("引用已就绪，正在附加到本轮请求…");
+    setAgentReferenceNotice(`引用已就绪：${references.length} 项 / ${context.length} 字，正在附加到本轮请求…`);
     renderAgentReferences();
   }
 
@@ -2734,21 +2768,27 @@
     Object.defineProperty(client, "__lingxiAgentReferenceBridgeV1", { value: true, configurable: false });
     client.runWithTools = async (request) => {
       const pending = pendingAgentReferenceRequest;
-      const matchesManualChat = pending && Date.now() <= pending.expiresAt && Array.isArray(request?.messages)
+      const now = Date.now();
+      const exactPromptMatch = pending && Array.isArray(request?.messages)
         && request.messages.some((message) => message?.role === "user" && contentIncludesAgentReferencePrompt(message.content, pending.prompt));
+      // 发送链路可能在 capture 后重写/包装 user 内容；手动发送后 30 秒内的下一次主聊天请求仍视为同一轮。
+      const recentManualSendFallback = pending && requestHasManualUserMessage(request) && (now - pending.armedAt) <= 30000;
+      const matchesManualChat = pending && now <= pending.expiresAt && (exactPromptMatch || recentManualSendFallback);
       if (!matchesManualChat) return originalRunWithTools(request);
       pending.injectionStarted = true;
-      setAgentReferenceNotice("引用已附加到本轮请求；完成后会自动清除。");
+      const scopedRequest = injectAgentReferenceIntoRequest(request, pending.context);
+      setAgentReferenceNotice(`已送入模型：${pending.referenceCount || 1} 项引用 / ${pending.context.length} 字；本轮完成后自动清除。`);
       renderAgentReferences();
-      const referenceSystemMessage = {
-        role: "system",
-        content: `[Agent references — use as supplementary context only]\n${pending.context}`
-      };
-      const scopedRequest = Object.assign({}, request, { messages: [referenceSystemMessage, ...request.messages] });
       try {
-        return await originalRunWithTools(scopedRequest);
-      } finally {
+        const result = await originalRunWithTools(scopedRequest);
         clearPendingAgentReferences(pending, true);
+        return result;
+      } catch (error) {
+        // app.js 会自动重试：失败时保留 pending，让下一次 runWithTools 仍携带引用。
+        pending.injectionStarted = false;
+        setAgentReferenceNotice("模型请求未成功，引用已保留并会随自动重试再次发送。", "warning");
+        renderAgentReferences();
+        throw error;
       }
     };
   }
