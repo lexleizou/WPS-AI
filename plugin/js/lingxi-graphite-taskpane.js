@@ -478,12 +478,43 @@
     window.WpsAiGraphiteInspection = { phases: INSPECTION_PHASES.map((phase) => ({ ...phase })) };
   }
 
+  function isSyntheticChatStop(stopButton) {
+    return !!stopButton?.dataset?.lingxiSyntheticStop;
+  }
+
+  // 阶段门禁需要中断当前模型轮次，但这不是用户点击“停止”。
+  // 仍复用原生 stopChat 的 AbortController，随后仅移除本次内部中止生成的提示节点。
+  function clickChatStopSilently(reason = "internal-stage-boundary") {
+    const stop = byId("chatStopBtn");
+    if (!stop || stop.classList.contains("hidden")) return false;
+    const stream = byId("chatStream");
+    const existing = new Set(Array.from(stream?.children || []));
+    stop.dataset.lingxiSyntheticStop = reason;
+    const removeSyntheticNotice = () => {
+      Array.from(stream?.children || []).forEach((node) => {
+        if (existing.has(node)) return;
+        const text = String(node.textContent || "").replace(/\s+/g, "").trim();
+        if ((text === "（已停止）" || text === "(已停止)") && (node.matches?.(".tl-error, .tl-msg") || node.querySelector?.(".tl-error"))) node.remove();
+      });
+    };
+    try {
+      stop.click();
+      removeSyntheticNotice();
+      window.setTimeout(removeSyntheticNotice, 0);
+      return true;
+    } finally {
+      // MutationObserver 在当前任务结束后的微任务中运行；标记至少保留到下一宏任务。
+      window.setTimeout(() => { delete stop.dataset.lingxiSyntheticStop; }, 0);
+    }
+  }
+
   function installInspectionBusyObserver() {
     const stopButton = byId("chatStopBtn");
     if (!stopButton || stopButton.dataset.lingxiInspectionBound === "1") return;
     stopButton.dataset.lingxiInspectionBound = "1";
     let wasBusy = !stopButton.classList.contains("hidden");
     stopButton.addEventListener("click", () => {
+      if (isSyntheticChatStop(stopButton)) return;
       inspectionStopRequested = true;
       inspectionControllers.forEach((controller) => controller.finishTurn(true));
     }, true);
@@ -670,10 +701,7 @@
         writePreviewGate.autoPreviewPending = true;
         renderWritePreviewGate();
         // A hard boundary: abort the map-only turn before the model can queue a writer call.
-        window.setTimeout(() => {
-          const stop = byId("chatStopBtn");
-          if (stop && !stop.classList.contains("hidden")) stop.click();
-        }, 0);
+        window.setTimeout(() => clickChatStopSilently("preview-map-boundary"), 0);
       }
       return result;
     };
@@ -938,6 +966,7 @@
     if (!stop || stop.dataset.lingxiTaskProgressBound === "1") return;
     stop.dataset.lingxiTaskProgressBound = "1";
     stop.addEventListener("click", () => {
+      if (isSyntheticChatStop(stop)) return;
       normalizeTaskSnapshot(taskPanelSource()).filter((task) => task.status === "in_progress").forEach((task) => taskProgressRuntime.stoppedIds.add(task.id));
       taskProgressRuntime.stopEpoch += 1;
       renderTaskProgress(true);
