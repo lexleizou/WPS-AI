@@ -1,0 +1,1893 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>灵犀AI</title>
+    <link rel="stylesheet" href="./js/vendor/ant-design-vue/reset.css" />
+    <link rel="stylesheet" href="./css/style.css" />
+    <!-- LINGXI_GRAPHITE_TASKPANE_V1_CSS_START -->
+    <link rel="stylesheet" href="./css/lingxi-graphite-taskpane.css" />
+    <!-- LINGXI_GRAPHITE_TASKPANE_V1_CSS_END -->
+    <script>
+      // 早期检测：?mode=settings / preview / stylepreset / materials / quickprompt / formatpreview / selectionpreview 时给 body 加对应 class，CSS 提前隐藏 TaskPane 主 UI
+      (function () {
+        try {
+          const s = window.location.search;
+          if (/[?&]mode=settings(?:&|$)/i.test(s)) {
+            document.documentElement.classList.add("settings-mode");
+          }
+          if (/[?&]mode=preview(?:&|$)/i.test(s)) {
+            document.documentElement.classList.add("preview-mode");
+          }
+          if (/[?&]mode=stylepreset(?:&|$)/i.test(s)) {
+            document.documentElement.classList.add("stylepreset-mode");
+          }
+          if (/[?&]mode=materials(?:&|$)/i.test(s)) {
+            document.documentElement.classList.add("materials-mode");
+          }
+          if (/[?&]mode=quickprompt(?:&|$)/i.test(s)) {
+            document.documentElement.classList.add("quickprompt-mode");
+          }
+          if (/[?&]mode=formatpreview(?:&|$)/i.test(s)) {
+            document.documentElement.classList.add("formatpreview-mode");
+          }
+          if (/[?&]mode=selectionpreview(?:&|$)/i.test(s)) {
+            document.documentElement.classList.add("selectionpreview-mode");
+          }
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <!-- 浮动模式 4 个边 + 4 个角的 resize 抓手：仅 body.is-floating 时显示。
+         鼠标按下抓边/角 → mousemove 期间按屏幕坐标 delta 调 pane.Width/Height。
+         body 用 absolute 铺满 WebView,这些抓手贴边覆盖在内容上层,改鼠标光标。 -->
+    <div id="resizeHandles" class="resize-handles" aria-hidden="true">
+      <div class="resize-handle resize-n"  data-edge="n"></div>
+      <div class="resize-handle resize-s"  data-edge="s"></div>
+      <div class="resize-handle resize-e"  data-edge="e"></div>
+      <div class="resize-handle resize-w"  data-edge="w"></div>
+      <div class="resize-handle resize-ne" data-edge="ne"></div>
+      <div class="resize-handle resize-nw" data-edge="nw"></div>
+      <div class="resize-handle resize-se" data-edge="se"></div>
+      <div class="resize-handle resize-sw" data-edge="sw"></div>
+    </div>
+    <div id="pluginStartupOverlay" class="plugin-startup-overlay hidden" role="status" aria-live="polite" aria-hidden="true">
+      <div class="plugin-startup-panel">
+        <span class="chat-progress-spinner" aria-hidden="true"></span>
+        <span data-role="startup-label">插件启动中</span>
+      </div>
+    </div>
+    <main class="app-shell">
+      <!-- 顶部 Header：紧凑布局 - logo + 模型 + 状态 + 设置 -->
+      <header class="app-header">
+        <div class="brand">
+          <div class="brand-logo">
+            <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M11 8 L12.3 11.5 L15.8 12.8 L12.3 14.1 L11 17.6 L9.7 14.1 L6.2 12.8 L9.7 11.5 Z" />
+              <path d="M22 19 L22.85 21.3 L25.15 22.15 L22.85 23 L22 25.3 L21.15 23 L18.85 22.15 L21.15 21.3 Z" />
+              <path d="M24 8 L24.5 9.4 L25.9 9.9 L24.5 10.4 L24 11.8 L23.5 10.4 L22.1 9.9 L23.5 9.4 Z" />
+            </svg>
+          </div>
+          <div class="brand-text-group">
+            <h1 class="brand-name">灵犀AI</h1>
+            <div class="brand-version-row">
+              <span id="brandVersion" class="brand-version">v…</span>
+              <span id="proxyStatusBadge" class="proxy-status-badge proxy-status-pending" title="本地代理检测中">检测中</span>
+              <button id="updateAvailableBadge" type="button" class="update-available-badge hidden" aria-label="发现新版本，点击查看" title="发现新版本，点击查看">
+                <span class="update-dot"></span>
+                <span class="update-label">新版本</span>
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="header-controls">
+          <!-- 模型选择：底下保留隐藏 <select> 作为数据源（既兼容老 JS 又能让 form 控件读 value），
+               上面盖一层自定义按钮 + 浮层，能在每条模型旁边画能力图标。 -->
+          <div class="model-select-wrap">
+            <select id="modelSelect" class="header-model-hidden" title="模型" aria-hidden="true"></select>
+            <button id="modelSelectBtn" class="model-select-btn" type="button" title="点击选择模型">
+              <span id="modelSelectLabel" class="model-select-label">—</span>
+              <span id="modelSelectCaps" class="model-select-caps"></span>
+              <svg class="model-select-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polyline points="6 9 12 15 18 9"/>
+              </svg>
+            </button>
+            <div id="modelSelectPopup" class="model-select-popup hidden" role="listbox"></div>
+          </div>
+          <button id="refreshModelsBtn" class="icon-btn" type="button" title="刷新模型列表" aria-label="刷新模型列表">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="23 4 23 10 17 10"/>
+              <polyline points="1 20 1 14 7 14"/>
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/>
+              <path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14"/>
+            </svg>
+          </button>
+          <span id="canaryHeaderBadge" class="badge badge-warning canary-header-badge hidden" title="你正在使用灰度版本，遇到问题可去「设置 → 程序信息」查看 / 回退">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4L12 14.3l-4.8 2.6.9-5.4L4.2 7.7l5.4-.8L12 2z"/></svg>
+            <span>灰度</span>
+          </span>
+          <span id="authBadge" class="badge badge-muted" title="登录/服务状态">未配置</span>
+        </div>
+      </header>
+
+      <nav class="tab-bar" role="tablist">
+        <button type="button" class="tab-btn active" data-tab="ai" role="tab">AI 助手</button>
+        <button type="button" class="tab-btn" data-tab="history" role="tab">改动记录<span id="historyBadge" class="tab-badge hidden">0</span></button>
+        <button type="button" class="tab-btn" data-tab="image" role="tab">生图<span id="imageTaskBadge" class="tab-badge hidden"></span></button>
+        <!-- 设置不再占用 Tab Bar，改为右侧 ⚙ 按钮 → 弹窗 -->
+        <div class="tab-bar-spacer"></div>
+        <!-- 新对话 / 历史对话 / 解锁 / 折叠：靠右，紧挨「脱离」按钮 -->
+        <button type="button" id="newConversationBtn" class="tab-bar-action icon-only" title="新对话（当前对话已自动存档）" aria-label="新对话">
+          <span class="pill-icon">+</span>
+        </button>
+        <button type="button" id="conversationsMenuBtn" class="tab-bar-action icon-only" title="历史对话" aria-label="历史对话">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="9"/>
+            <polyline points="12 7 12 12 16 14"/>
+          </svg>
+        </button>
+        <button type="button" id="forceUnlockBtn" class="tab-bar-action icon-only hidden" title="解除文档编辑限制（AI 锁定残留时用）" aria-label="解除文档锁定">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="11" width="18" height="11" rx="2"/>
+            <path d="M7 11V7a5 5 0 0 1 9.9-1"/>
+          </svg>
+        </button>
+        <button type="button" id="chatFoldToggle" class="tab-bar-action icon-only chat-fold-toggle hidden" title="折叠中间轮次：只保留首尾对话，中间轮折起来" aria-label="折叠中间轮次" aria-pressed="false">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="4 8 12 4 20 8"/>
+            <polyline points="4 16 12 20 20 16"/>
+            <line x1="4" y1="12" x2="20" y2="12" stroke-dasharray="2 3"/>
+          </svg>
+        </button>
+        <!-- 停靠/浮动切换：点一下让 TaskPane 脱离右侧固定区域成浮动窗口；再点回来 -->
+        <button type="button" id="dockToggleBtn" class="tab-bar-action" title="切换停靠/浮动" aria-label="切换停靠/浮动">
+          <svg id="dockToggleIcon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <!-- 默认 = 当前已停靠，显示"脱离"图标（向右上的箭头） -->
+            <path d="M14 3h7v7"/>
+            <path d="M10 14L21 3"/>
+            <path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/>
+          </svg>
+          <span id="dockToggleLabel">脱离</span>
+        </button>
+        <button type="button" id="openSettingsModalBtn" class="tab-bar-action" title="服务配置" aria-label="服务配置">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+          <span>设置</span>
+        </button>
+      </nav>
+
+      <section id="message" class="message hidden" role="status"></section>
+
+      <!-- 全套 PPT 生成进度（wpp_render_full_deck）：轮询 localStorage 显示 -->
+      <div id="fullDeckProgress" class="full-deck-progress hidden" role="status" aria-live="polite">
+        <div class="full-deck-progress-head">
+          <span class="full-deck-progress-title">AI 整套 PPT 生成中</span>
+          <span id="fullDeckProgressCount" class="full-deck-progress-count">0 / 0</span>
+        </div>
+        <div class="full-deck-progress-bar"><div id="fullDeckProgressBarFill" class="full-deck-progress-bar-fill"></div></div>
+        <div id="fullDeckProgressLabel" class="full-deck-progress-label">开始生成…</div>
+      </div>
+
+      <!-- 历史对话：独立弹窗（居中 modal），与生图素材库同款弹窗风格 -->
+      <div id="conversationsMenu" class="modal-overlay conversations-modal hidden" role="dialog" aria-modal="true" aria-labelledby="conversationsModalTitle">
+        <div class="modal-card conversations-modal-card">
+          <header class="conversation-menu-head">
+            <strong id="conversationsModalTitle">历史对话</strong>
+            <button type="button" id="conversationsMenuClose" class="icon-btn" title="关闭" data-close-modal>×</button>
+          </header>
+          <div id="conversationsMenuList" class="conversation-menu-list"></div>
+          <div id="conversationsMenuEmpty" class="conversation-menu-empty hidden">还没有历史对话</div>
+        </div>
+      </div>
+
+      <!-- 设置面板 -->
+      <!-- 设置弹窗：单独 modal，侧边栏 4 个分类（聊天 / 生图 / 统一 / 程序）。
+           原 settingsView 的所有表单分门别类塞进去；现有 JS 用的 id 全部保留不动。 -->
+      <div id="settingsModal" class="modal-overlay settings-modal hidden" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle">
+        <div class="modal-card settings-modal-card">
+          <header class="settings-modal-header">
+            <h2 id="settingsModalTitle">服务配置</h2>
+            <button type="button" id="settingsModalCloseBtn" class="ghost-btn icon-only" title="关闭" aria-label="关闭" data-close-modal>×</button>
+          </header>
+          <div class="settings-modal-layout">
+            <!-- 左侧分类侧栏 -->
+            <aside class="settings-sidebar" role="tablist" aria-orientation="vertical">
+              <div class="settings-search-wrap">
+                <svg class="settings-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input id="settingsSearchInput" class="settings-search-input" type="search" placeholder="搜索设置项…" aria-label="搜索设置"/>
+              </div>
+              <button type="button" class="settings-sidebar-btn active" data-settings-panel="chat" role="tab">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                </svg>
+                <span>聊天模型</span>
+              </button>
+              <button type="button" class="settings-sidebar-btn" data-settings-panel="image" role="tab">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                  <circle cx="8.5" cy="8.5" r="1.5"/>
+                  <polyline points="21 15 16 10 5 21"/>
+                </svg>
+                <span>生图模型</span>
+              </button>
+              <button type="button" class="settings-sidebar-btn" data-settings-panel="general" role="tab">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <line x1="4" y1="6" x2="20" y2="6"/>
+                  <line x1="4" y1="12" x2="20" y2="12"/>
+                  <line x1="4" y1="18" x2="20" y2="18"/>
+                </svg>
+                <span>统一配置</span>
+              </button>
+              <button type="button" class="settings-sidebar-btn" data-settings-panel="skills" role="tab">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M12 2L15 8l6 1-4.5 4.5L18 20l-6-3-6 3 1.5-6.5L3 9l6-1z"/>
+                </svg>
+                <span>技能</span>
+              </button>
+              <button type="button" class="settings-sidebar-btn" data-settings-panel="mcp" role="tab">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+                  <line x1="8" y1="21" x2="16" y2="21"/>
+                  <line x1="12" y1="17" x2="12" y2="21"/>
+                </svg>
+                <span>MCP 服务</span>
+              </button>
+              <button type="button" class="settings-sidebar-btn" data-settings-panel="mcp-client" role="tab">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M4 12a8 8 0 0 1 8-8"/><path d="M4 12a8 8 0 0 0 8 8"/><circle cx="12" cy="12" r="2"/><path d="M20 12h-6"/>
+                </svg>
+                <span>MCP 客户端</span>
+              </button>
+              <button type="button" class="settings-sidebar-btn" data-settings-panel="tokens" role="tab">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 8v8M9.5 10.5h3a1.5 1.5 0 0 1 0 3h-3"/></svg>
+                <span>Token 消耗</span>
+              </button>
+              <button type="button" class="settings-sidebar-btn" data-settings-panel="service" role="tab">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><line x1="7" y1="7.5" x2="7.01" y2="7.5"/><line x1="7" y1="16.5" x2="7.01" y2="16.5"/></svg>
+                <span>服务状态</span>
+              </button>
+              <button type="button" class="settings-sidebar-btn" data-settings-panel="about" role="tab">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="10"/>
+                  <line x1="12" y1="16" x2="12" y2="12"/>
+                  <line x1="12" y1="8" x2="12.01" y2="8"/>
+                </svg>
+                <span>程序信息</span>
+              </button>
+              <button type="button" class="settings-sidebar-btn" data-settings-panel="feedback" role="tab">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                </svg>
+                <span>Bug 反馈</span>
+              </button>
+            </aside>
+
+            <!-- 右侧主面板（每个 panel 独立 scroll） -->
+            <div class="settings-content">
+
+              <!-- 聊天模型配置：多供应商列表 + 新增 -->
+              <section class="settings-panel active" data-settings-panel="chat">
+                <div class="panel-header">
+                  <h3>聊天模型供应商</h3>
+                  <p class="muted">可以同时配置多家。当前活动的模型在顶部下拉里切换，列表里只填 API Key 即可启用。</p>
+                </div>
+                <div id="localModelGuideSlot" class="local-model-guide-slot"></div>
+                <div id="chatProvidersList" class="chat-providers-list"></div>
+                <div class="settings-actions">
+                  <button id="addChatProviderBtn" class="primary-btn" type="button">+ 新增供应商</button>
+                </div>
+                <!-- 隐藏占位：以下 id 是给 JS 兼容用的，老 saveSettings/exportSettings 还在引用，
+                     真正可见的编辑入口是上面的 chatProvidersList 卡片表单。 -->
+                <div class="legacy-shim hidden">
+                  <select id="providerSelect">
+                    <option value="codex">Codex (ChatGPT OAuth)</option>
+                    <option value="openai">OpenAI 兼容</option>
+                    <option value="anthropic">Anthropic Claude</option>
+                  </select>
+                  <div id="codexAuthArea">
+                    <button id="signInBtn" type="button">登录</button>
+                    <textarea id="authCodeInput"></textarea>
+                    <button id="exchangeCodeBtn" type="button">换 token</button>
+                  </div>
+                  <div id="codexSignedInArea" class="hidden">
+                    <p id="tokenInfo"></p>
+                    <button id="signOutBtn" type="button">退出</button>
+                  </div>
+                  <input id="openaiBaseUrl" /><input id="openaiApiKey" /><input id="openaiDefaultModel" /><input id="openaiUseProxy" type="checkbox" />
+                  <input id="anthropicBaseUrl" /><input id="anthropicApiKey" /><input id="anthropicDefaultModel" /><input id="anthropicVersion" /><input id="anthropicUseProxy" type="checkbox" />
+                </div>
+              </section>
+
+              <!-- 生图模型配置（多渠道，互斥启用） -->
+              <section class="settings-panel hidden" data-settings-panel="image">
+                <div class="panel-header">
+                  <h3>生图模型</h3>
+                  <p class="muted">支持配置多个生图渠道（toapis 异步任务 / Codex 桥接 sub2api / OpenAI 官方 / OpenRouter / Boogu 本地生图），同一时刻只能启用一个。AI 调用 generate_image 生成图片后用 wps_insert_image 插入文档。</p>
+                </div>
+                <label class="field">
+                  <span class="field-row-head">默认生图比例</span>
+                  <select id="imageSizeOverrideInput">
+                    <option value="">自动（由 AI 按提示词和场景判断）</option>
+                    <option value="1:1">1:1 方形</option>
+                    <option value="16:9">16:9 横向</option>
+                    <option value="9:16">9:16 竖向</option>
+                    <option value="4:3">4:3</option>
+                    <option value="3:4">3:4</option>
+                    <option value="3:2">3:2</option>
+                    <option value="2:3">2:3</option>
+                    <option value="21:9">21:9 超宽</option>
+                  </select>
+                  <small class="field-tip">兜底默认比例：当单次生图没指定比例时用它。生图弹窗里为单次单独选的比例优先级更高。留「自动」则维持原逻辑（AI 按上下文判断）。</small>
+                </label>
+                <!-- 多渠道列表（卡片由 app.js renderImageProvidersList 动态渲染） -->
+                <p class="field-tip image-provider-model-note">备注：当前生图能力仅支持 <code>gpt-image-2</code> 模型。</p>
+                <div id="imageProvidersList" class="chat-providers-list"></div>
+                <div class="settings-actions">
+                  <button id="addImageProviderBtn" class="secondary-btn" type="button">+ 新增图像渠道</button>
+                </div>
+              </section>
+
+              <!-- 统一配置：操作模式 / 工具迭代上限 / 系统提示词 -->
+              <section class="settings-panel hidden" data-settings-panel="general">
+                <div class="panel-header">
+                  <h3>统一配置</h3>
+                  <p class="muted">影响所有供应商的全局行为。</p>
+                </div>
+                <label class="field">
+                  <span>界面语言 / Language</span>
+                  <!-- data-no-i18n：语言选择器自身不参与自动翻译（option 文本双语写死，
+                       避免翻译器改 option 文本在个别 CEF 上引发下拉值重置） -->
+                  <select id="uiLanguageSelect" data-no-i18n>
+                    <option value="auto">跟随系统 / Auto</option>
+                    <option value="zh">简体中文</option>
+                    <option value="en">English</option>
+                  </select>
+                  <small class="field-tip">切换立即生效；个别动态文案会在下次刷新后完全生效。</small>
+                </label>
+
+                <label class="field">
+                  <span>AI 操作模式</span>
+                  <select id="operationModeSelect">
+                    <option value="direct">直接操作wps(推荐)</option>
+                    <option value="preview">预览确认</option>
+                  </select>
+                  <small class="field-tip">AI 调用工具修改文档前是否需要你点确认。</small>
+                </label>
+
+                <div class="field">
+                  <label class="field-row">
+                    <input id="aiFollowHighlightInput" type="checkbox" />
+                    <span>AI 操作跟随提示</span>
+                  </label>
+                  <small class="field-tip">AI 修改文档时，Word 里视图滚动跟随改动位置、Excel 里选中改动区域，直观看到 AI 在动哪里。不改任何格式；不想被打断阅读视线可关闭。</small>
+                </div>
+
+                <div class="field">
+                  <span>启用的 Office 组件</span>
+                  <div class="host-toggle-grid">
+                    <label class="host-toggle"><input type="checkbox" id="enableHostWps" /><span>Word（文字）</span></label>
+                    <label class="host-toggle"><input type="checkbox" id="enableHostEt" /><span>Excel（表格）</span></label>
+                    <label class="host-toggle"><input type="checkbox" id="enableHostWpp" /><span>PPT（演示）</span></label>
+                    <label class="host-toggle"><input type="checkbox" id="enableHostPdf" /><span>PDF</span></label>
+                  </div>
+                  <small class="field-tip">只在勾选的组件里加载灵犀AI 加载项。取消勾选后对应组件不再显示插件按钮。改动需<strong>重启 WPS</strong> 后生效。</small>
+                </div>
+
+                <label class="field">
+                  <span>工具调用次数上限</span>
+                  <input id="maxToolIterationsInput" type="number" min="5" max="500" step="5" />
+                  <small class="field-tip">一次对话允许 AI 连续调用工具的最多次数（默认 150）。复杂任务如「AI 生成 10 页 PPT」可能需要 80-150；过低会中途报错"达到上限"。</small>
+                </label>
+
+                <label class="field">
+                  <span class="field-row-head">
+                    系统提示词
+                    <button type="button" id="systemPromptResetBtn" class="ghost-btn field-inline-btn" title="恢复为默认提示词">重置默认</button>
+                  </span>
+                  <textarea id="systemPromptInput" rows="10" placeholder="给 AI 的全局指引（每轮对话都会附加在 system message 里）"></textarea>
+                  <small class="field-tip">控制 AI 的回答风格 / 格式 / 操作偏好。默认配了"简洁直接、不堆 emoji、不带 AI 套话、直接调工具改文档"等规则。留空则不追加，只用插件内置的最小提示。</small>
+                </label>
+
+                <div class="field">
+                  <label class="field-row">
+                    <input id="showToolCallLogsInput" type="checkbox" />
+                    <span>显示工具调用详情（开发者日志）</span>
+                  </label>
+                  <small class="field-tip">默认关闭：AI 调工具时只显示"调用中"的滚动提示，结果到达后自动消失，对话区只看到 AI 的最终回答。开启后保留每条调用 + 结果的折叠卡片（带完整 JSON），便于排查 AI 行为。</small>
+                </div>
+
+                <div class="field">
+                  <label class="field-row">
+                    <input id="splitLayersOnInsertInput" type="checkbox" />
+                    <span>HTML 模板插入 PPT 时分图层（实验）</span>
+                  </label>
+                  <small class="field-tip">默认关闭。开启后把 HTML 渲染拆成「背景 + 每个顶层元素一张」共 N 张图片插入 PPT，每张都是独立 shape，可在 PPT 里单独选中/移动/缩放。注意：layered 模式偶发"slide 留白"问题（all-layers-fail 时已自动 fallback 到单图）。关闭则整页只插一张大图（稳定路径）。</small>
+                </div>
+              </section>
+
+              <!-- 技能：内置 + 用户导入 markdown 技能；启用的会拼到 system prompt 后面 -->
+              <section class="settings-panel hidden" data-settings-panel="skills">
+                <div class="panel-header">
+                  <h3>技能 (Skills)</h3>
+                  <p class="muted">勾选启用的技能会自动追加到 AI 的系统提示，针对特定场景给 AI 更精准的指令。支持导入 .md / .txt 自定义技能。</p>
+                </div>
+                <div class="settings-actions">
+                  <button id="skillImportBtn" class="ghost-btn" type="button" title="从 .md / .txt 文件导入自定义技能">导入技能 (.md/.txt)</button>
+                  <button id="skillCloudRefreshBtn" class="ghost-btn" type="button" title="从云端（OSS）目录拉取最新技能">刷新云端技能</button>
+                  <input id="skillImportFile" type="file" accept=".md,.txt,.markdown,text/markdown,text/plain" hidden />
+                </div>
+                <div class="skills-filter">
+                  <div class="skills-search-wrap">
+                    <svg class="skills-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    <input id="skillsSearchInput" class="skills-search-input" type="search" placeholder="搜索技能名字 / 描述"/>
+                  </div>
+                  <div id="skillsCategoryChips" class="skills-category-chips"></div>
+                </div>
+                <div id="skillsList" class="skills-list"></div>
+                <small class="field-tip" style="display:block;margin-top:8px">导入文件格式：可选 frontmatter (<code>--- name: xxx description: xxx ---</code>)，余下是技能正文。无 frontmatter 时用第一个 <code>#</code> 标题或文件名作为名字。</small>
+              </section>
+
+              <!-- MCP 服务：把 WPS 工具通过 MCP 协议暴露给外部 agent (Claude Code CLI 等) -->
+              <section class="settings-panel settings-panel-subtabs hidden" data-settings-panel="mcp">
+                <div class="panel-header">
+                  <h3>MCP 服务</h3>
+                  <p class="muted">把当前宿主可用的 WPS 工具通过 Model Context Protocol 暴露给外部 agent（Claude Code CLI / Claude Desktop / Cursor 等）。需要 proxy-server.js 正在运行。</p>
+                </div>
+
+                <div class="settings-subtabs" data-settings-subtabs="mcp" role="tablist" aria-label="MCP 服务区域">
+                  <button type="button" data-subtab-target="mcp-status" class="settings-subtab-btn active" role="tab" aria-selected="true">状态</button>
+                  <button type="button" data-subtab-target="mcp-config" class="settings-subtab-btn" role="tab" aria-selected="false">客户端配置</button>
+                  <button type="button" data-subtab-target="mcp-tools" class="settings-subtab-btn" role="tab" aria-selected="false">工具</button>
+                  <button type="button" data-subtab-target="mcp-calls" class="settings-subtab-btn" role="tab" aria-selected="false">调用日志</button>
+                </div>
+
+                <div data-subtab-panel="mcp-status" class="settings-subtab-panel active" role="tabpanel">
+                  <div class="field">
+                    <label class="field-row">
+                      <input id="mcpServerEnabledInput" type="checkbox" />
+                      <span>启用 MCP 服务</span>
+                    </label>
+                    <small class="field-tip">开启后插件会向 proxy-server.js 注册当前宿主可用的工具，并通过长轮询接收外部 agent 的调用请求。</small>
+                  </div>
+
+                  <div class="config-card mcp-status-card">
+                    <div class="about-row">
+                      <span class="about-label">状态</span>
+                      <span id="mcpStatusBadge" class="about-version">未启用</span>
+                    </div>
+                    <div class="about-row">
+                      <span class="about-label">已注册工具数</span>
+                      <span id="mcpToolCount" class="about-version">—</span>
+                    </div>
+                    <div class="about-row">
+                      <span class="about-label">最近错误</span>
+                      <span id="mcpLastError" class="about-version">—</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div data-subtab-panel="mcp-config" class="settings-subtab-panel hidden" role="tabpanel">
+                  <div class="panel-header">
+                    <h3>客户端配置</h3>
+                    <p class="muted">把下面这段 JSON 加到 Claude Code CLI 的 <code>~/.claude.json</code>（或 Claude Desktop 的 <code>claude_desktop_config.json</code> 的 <code>mcpServers</code> 字段）即可。</p>
+                  </div>
+                  <textarea id="mcpConfigSnippet" class="config-snippet" rows="10" readonly></textarea>
+                  <div class="settings-actions">
+                    <button id="mcpCopyConfigBtn" class="ghost-btn" type="button">复制配置</button>
+                  </div>
+                </div>
+
+                <div data-subtab-panel="mcp-tools" class="settings-subtab-panel hidden" role="tabpanel">
+                  <div class="panel-header">
+                    <h3>已暴露的工具</h3>
+                  </div>
+                  <div id="mcpToolsList" class="mcp-tools-list"></div>
+                </div>
+
+                <div data-subtab-panel="mcp-calls" class="settings-subtab-panel hidden" role="tabpanel">
+                  <div class="panel-header subtab-panel-head">
+                    <h3>最近外部调用</h3>
+                    <button id="mcpCallLogClearBtn" class="ghost-btn compact-btn" type="button">清空</button>
+                  </div>
+                  <p class="muted" style="font-size:11px;margin:4px 0 8px">
+                    外部 agent（Claude Code CLI / MCP 客户端）最近通过 MCP 调用了哪些工具、成功与否、耗时多久。最多保留 50 条。
+                  </p>
+                  <div id="mcpCallLogList" class="mcp-call-log-list"></div>
+                </div>
+              </section>
+
+              <!-- MCP 客户端：WPS-AI 作为 MCP Client 连接外部 MCP 服务，把其工具纳入 AI 对话 -->
+              <section class="settings-panel hidden" data-settings-panel="mcp-client">
+                <div class="panel-header subtab-panel-head">
+                  <div>
+                    <h3>MCP 客户端</h3>
+                    <p class="muted">连接外部 MCP 服务（本地 stdio 子进程 / 远程 SSE），把它们的工具加入 AI 对话调用。需要 proxy-server.js 正在运行。</p>
+                  </div>
+                  <button id="mcpClientAddBtn" class="ghost-btn compact-btn" type="button">+ 新增 MCP 服务</button>
+                </div>
+                <div id="mcpClientList" class="mcp-client-list"></div>
+              </section>
+
+              <!-- Token 消耗：按模型聚合的 token 用量 -->
+              <section class="settings-panel hidden" data-settings-panel="tokens">
+                <div class="panel-header token-usage-header">
+                  <div>
+                    <h3>Token 消耗</h3>
+                    <p class="muted">统计各模型消耗的 token。只在 provider 返回用量时记录；部分兼容网关不返回则不计入。</p>
+                  </div>
+                  <div class="token-usage-actions">
+                    <label class="token-range-field" for="tokenUsageRange">
+                      <span>时间范围</span>
+                      <select id="tokenUsageRange">
+                        <option value="1">今日</option>
+                        <option value="7" selected>近 7 天</option>
+                        <option value="30">近 30 天</option>
+                        <option value="all">全部</option>
+                      </select>
+                    </label>
+                    <button id="tokenUsageClearBtn" class="ghost-btn compact-btn" type="button">清零</button>
+                  </div>
+                </div>
+                <div id="tokenUsageTotals" class="token-usage-totals"></div>
+                <div id="tokenUsageSession" class="muted token-usage-session"></div>
+                <div class="token-usage-charts">
+                  <section class="token-usage-chart-card" aria-label="Token 时间趋势">
+                    <div class="token-usage-chart-head">
+                      <span>时间趋势</span>
+                      <small>按日总量</small>
+                    </div>
+                    <div id="tokenUsageTrendChart" class="token-usage-chart token-usage-trend"></div>
+                  </section>
+                  <section class="token-usage-chart-card" aria-label="Token 模型占比">
+                    <div class="token-usage-chart-head">
+                      <span>模型占比</span>
+                      <small>Top 5</small>
+                    </div>
+                    <div id="tokenUsageModelChart" class="token-usage-chart token-usage-model-share"></div>
+                  </section>
+                </div>
+                <div class="panel-header token-usage-section-head"><h3>按日</h3></div>
+                <div id="tokenUsageDailyTable" class="token-usage-table token-usage-daily-table"></div>
+                <div class="panel-header" style="margin-top:14px"><h3>按模型</h3></div>
+                <div id="tokenUsageTable" class="token-usage-table"></div>
+              </section>
+
+              <!-- 服务状态：端口 / 内存 -->
+              <section class="settings-panel hidden" data-settings-panel="service">
+                <div class="panel-header">
+                  <h3>服务状态</h3>
+                  <p class="muted">本机后台服务（承载 AI 调用 / 图表 / SQLite 缓存）占用的端口与内存。</p>
+                </div>
+                <div class="config-card">
+                  <div class="config-card-head" style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
+                    <span style="font-weight:600;color:var(--text)">后台服务</span>
+                    <span id="svcMemBadge" class="badge badge-muted">内存 —</span>
+                    <div style="margin-left:auto">
+                      <button id="svcStatusRefreshBtn" class="ghost-btn compact-btn" type="button" title="刷新端口与内存占用">刷新</button>
+                    </div>
+                  </div>
+                  <div id="svcStatusBody" class="svc-status-body"><span class="muted">加载中…</span></div>
+                </div>
+              </section>
+
+              <!-- 程序信息：关于 / 版本 / 导入导出 / 更新 -->
+              <section class="settings-panel settings-panel-subtabs hidden" data-settings-panel="about">
+                <div class="panel-header">
+                  <h3>程序信息</h3>
+                </div>
+                <div class="settings-subtabs" data-settings-subtabs="about" role="tablist" aria-label="程序信息区域">
+                  <button type="button" data-subtab-target="about-basic" class="settings-subtab-btn active" role="tab" aria-selected="true">基本信息</button>
+                  <button type="button" data-subtab-target="about-update" class="settings-subtab-btn" role="tab" aria-selected="false">版本更新</button>
+                  <button type="button" data-subtab-target="about-cache" class="settings-subtab-btn" role="tab" aria-selected="false">缓存管理</button>
+                  <button type="button" data-subtab-target="about-dev" class="settings-subtab-btn" role="tab" aria-selected="false">开发工具</button>
+                </div>
+
+                <div data-subtab-panel="about-basic" class="settings-subtab-panel active" role="tabpanel">
+                  <div class="about-basic-layout">
+                    <section class="config-card about-hero">
+                      <div class="about-hero-main">
+                        <div class="about-title-row">
+                          <span class="about-title">灵犀AI</span>
+                          <span id="aboutVersion" class="about-version" title="双击显示设备 SN">v…</span>
+                        </div>
+                        <p class="muted about-desc">WPS Office 加载项 · 多 provider AI 写作助手</p>
+                        <div class="about-chip-row" aria-label="支持的宿主">
+                          <span>Word</span>
+                          <span>Excel</span>
+                          <span>PPT</span>
+                          <span>PDF</span>
+                        </div>
+                      </div>
+                    </section>
+
+                    <div class="about-info-grid">
+                      <section class="config-card about-info-item">
+                        <span class="about-label">官网</span>
+                        <div class="about-info-line">
+                          <a id="aboutHomepageLink" href="https://wps-ai.llteac.cn/" target="_blank" rel="noopener" class="about-version" title="在浏览器中打开">https://wps-ai.llteac.cn/</a>
+                          <button id="copyHomepageBtn" type="button" class="ghost-btn compact-btn" title="复制官网地址">复制</button>
+                        </div>
+                      </section>
+                      <!-- 设备 SN：默认隐藏，双击上方版本号才显示。灰度白名单管理员需要这个 SN 才能把你加进 canary 通道 -->
+                      <section class="config-card about-info-item about-device-sn hidden">
+                        <span class="about-label">设备 SN</span>
+                        <div class="about-info-line">
+                          <code id="aboutDeviceSn" class="about-device-sn-val" title="点击复制">读取中…</code>
+                          <button id="copyDeviceSnBtn" type="button" class="ghost-btn compact-btn" title="复制 SN，发给管理员加灰度白名单">复制</button>
+                        </div>
+                      </section>
+                      <section class="config-card about-info-item about-info-wide">
+                        <span class="about-label">诊断包</span>
+                        <div class="about-info-line">
+                          <span class="muted">遇到问题时导出：版本 / 设置(脱敏) / 缓存占用 / SN / 最近日志。</span>
+                          <button id="exportDiagBundleBtn" type="button" class="ghost-btn compact-btn">导出诊断包</button>
+                        </div>
+                      </section>
+                    </div>
+
+                    <div class="about-action-grid settings-actions">
+                      <button id="exportSettingsBtn" class="ghost-btn" type="button" title="导出当前配置（含 API Key，注意不要外发）">导出配置 JSON</button>
+                      <button id="importSettingsBtn" class="ghost-btn" type="button" title="从 JSON 文件导入配置">导入配置 JSON</button>
+                      <input id="importSettingsFile" type="file" accept=".json,application/json" hidden />
+                    </div>
+                  </div>
+                </div>
+
+                <div data-subtab-panel="about-update" class="settings-subtab-panel hidden" role="tabpanel">
+                  <!-- 热更新 -->
+                  <div class="config-card update-card">
+                    <div class="update-card-head">
+                      <span class="update-card-title">版本更新</span>
+                      <span id="updateChannelBadge" class="badge badge-muted" title="stable=正式 / canary=灰度">stable</span>
+                      <span id="updateStatusBadge" class="badge badge-muted">未检查</span>
+                    </div>
+                    <div class="update-meta">
+                      <div class="update-meta-row">
+                        <span class="update-meta-label">最新版本</span>
+                        <span id="updateLatestVersion" class="update-meta-val">—</span>
+                      </div>
+                      <div class="update-meta-row">
+                        <span class="update-meta-label">最近检查</span>
+                        <span id="updateLastCheckedAt" class="update-meta-val">—</span>
+                      </div>
+                    </div>
+                    <div id="updateChangelog" class="update-changelog"></div>
+                    <div class="update-actions">
+                      <label class="field-row update-autocheck">
+                        <input id="updateAutoCheckInput" type="checkbox" />
+                        <span>启动时自动检查</span>
+                      </label>
+                      <div class="update-actions-spacer"></div>
+                      <button id="updateCheckNowBtn" class="ghost-btn" type="button">立即检查</button>
+                      <button id="updateDownloadBtn" class="primary-btn" type="button" style="display:none">下载并安装</button>
+                    </div>
+                  </div>
+                </div>
+
+                <div data-subtab-panel="about-cache" class="settings-subtab-panel hidden" role="tabpanel">
+                  <!-- 缓存管理 -->
+                  <div class="config-card cache-card">
+                    <div class="config-card-head" style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
+                      <span style="font-weight:600;color:var(--text)">缓存管理</span>
+                      <span id="cacheTotalBadge" class="badge badge-muted">总计 —</span>
+                      <div style="margin-left:auto;display:flex;gap:6px">
+                        <button id="cacheRefreshBtn" class="ghost-btn compact-btn" type="button" title="重扫 localStorage + proxy 侧缓存">刷新</button>
+                        <button id="cacheClearSafeBtn" class="ghost-btn compact-btn" type="button" title="清预览中间态 / 版本检查 / 模型列表等安全缓存，不动设置和历史">清可缓存项</button>
+                      </div>
+                    </div>
+                    <p class="muted" style="font-size:11px;margin:0 0 8px">
+                      看看哪些数据占了本地空间，选择性清除。橘色标记的组清了会丢历史 / 设置，需要重配。
+                    </p>
+                    <div class="cache-auto-clean" id="cacheAutoCleanPanel">
+                      <label class="cache-auto-clean-toggle">
+                        <input type="checkbox" id="cacheAutoCleanEnabled"/>
+                        <span>启用自动清理</span>
+                      </label>
+                      <div class="cache-auto-clean-rules">
+                        <label class="cache-auto-clean-rule">
+                          <span>可安全缓存项超</span>
+                          <input type="number" id="cacheAutoCleanMaxAge" min="1" max="365" step="1" value="30"/>
+                          <span>天自动清</span>
+                        </label>
+                        <label class="cache-auto-clean-rule">
+                          <span>总缓存超</span>
+                          <input type="number" id="cacheAutoCleanMaxSize" min="10" max="10240" step="10" value="100"/>
+                          <span>MB 自动清</span>
+                        </label>
+                      </div>
+                      <div class="cache-auto-clean-status" id="cacheAutoCleanStatus"></div>
+                    </div>
+                    <div id="cacheGroupsList" class="cache-groups"></div>
+                  </div>
+                </div>
+
+                <!-- 开发者工具：仅 dev 模式（127.0.0.1/localhost/wpsjs debug 端口）显示，JS 自动检测 -->
+                <div data-subtab-panel="about-dev" class="settings-subtab-panel hidden" role="tabpanel">
+                  <div id="devToolsSection" class="config-card hidden">
+                    <div class="config-card-head" style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
+                      <span style="font-weight:600;color:var(--text)">开发者工具</span>
+                      <span class="badge badge-muted" id="devModeBadge">dev</span>
+                      <span class="badge badge-muted" id="devScriptVersionBadge" title="当前加载的 app.js 版本号，重载后刷新这里来确认新代码已加载">脚本版本: —</span>
+                    </div>
+                    <p class="muted" style="font-size:11px;margin:0 0 8px">仅开发环境可见。生产环境（永久安装 / GUI 安装包）自动隐藏。</p>
+                    <div class="settings-actions">
+                      <button id="viewPreviewLogsBtn" class="ghost-btn" type="button" title="弹窗查看最新日志，无需下载 txt">查看日志</button>
+                      <button id="dumpPreviewLogsBtn" class="ghost-btn" type="button" title="导出预览渲染全链路日志，用于排查空白预览等问题">导出预览日志</button>
+                      <button id="clearPreviewLogsBtn" class="ghost-btn" type="button" title="清空已积累的预览日志">清空预览日志</button>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <!-- Bug 反馈：独立 Tab Panel -->
+              <section class="settings-panel hidden" data-settings-panel="feedback">
+                <div class="panel-header">
+                  <h3>Bug 反馈</h3>
+                </div>
+                <div class="feedback-panel-body">
+                  <p class="feedback-panel-tip">遇到问题？欢迎加入粉丝群反馈！</p>
+                  <div class="feedback-steps">
+                    <div class="feedback-step">
+                      <span class="feedback-step-num">1</span>
+                      <span class="feedback-step-text">扫描下方二维码，关注公众号</span>
+                    </div>
+                    <div class="feedback-step">
+                      <span class="feedback-step-num">2</span>
+                      <span class="feedback-step-text">在公众号内发送 <code>ai</code>，即可获取进群链接</span>
+                    </div>
+                    <div class="feedback-step">
+                      <span class="feedback-step-num">3</span>
+                      <span class="feedback-step-text">进群后描述问题，附上截图更有帮助</span>
+                    </div>
+                  </div>
+                  <div class="feedback-qr-wrap feedback-qr-wrap--panel">
+                    <img src="./images/qrcode_for_gh.jpg" alt="公众号二维码" class="feedback-qr-img feedback-qr-img--panel" />
+                    <p class="feedback-qr-label">微信扫码关注公众号</p>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </div>
+
+          <footer class="settings-modal-footer">
+            <div class="flex-spacer"></div>
+            <!-- testChatConnBtn 元素保留隐藏：老代码（图像测试流程）还会 bindClick，不放容器里会报错 -->
+            <button id="testChatConnBtn" type="button" class="legacy-shim" style="display:none">测试供应商</button>
+            <button id="saveSettingsOnlyBtn" class="ghost-btn" type="button" title="保存当前修改，窗口保持打开继续配置">保存</button>
+            <button id="saveSettingsBtn" class="primary-btn" type="button">保存并关闭</button>
+          </footer>
+        </div>
+      </div>
+
+      <!-- 新增聊天供应商时弹的预设选单（嵌套 modal） -->
+      <div id="presetPickerModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
+        <div class="modal-card">
+          <div class="modal-header">
+            <h3>选一个预设供应商</h3>
+            <button type="button" class="modal-close" data-close-preset-picker aria-label="关闭">×</button>
+          </div>
+          <div class="modal-body">
+            <p class="muted">挑一个会自动填好 baseURL / 默认模型；填完 API Key 就能用。</p>
+            <div id="presetPickerList" class="preset-list"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 保留隐藏占位：老 settingsView 的 hidden 引用还在，避免脚本 null deref -->
+      <section id="settingsView" class="panel tab-panel hidden" data-tab-panel="settings" aria-hidden="true"></section>
+
+      <!-- 生图任务：独立 tab，AI 生图进度在这里显示，不占聊天区 -->
+      <section id="imageView" class="panel tab-panel hidden" data-tab-panel="image">
+        <div id="imageGenPanel" class="image-gen-panel hidden" role="status" aria-live="polite">
+          <div class="image-gen-head">
+            <span class="image-gen-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="5" width="18" height="14" rx="2"/>
+                <circle cx="9" cy="11" r="1.5"/>
+                <path d="M21 17l-5-5-6 7"/>
+              </svg>
+            </span>
+            <div class="image-gen-headline">
+              <strong>AI 正在生成图片</strong>
+              <span id="imageGenStatus" class="image-gen-status muted">排队中</span>
+            </div>
+            <button id="imageGenCloseBtn" class="icon-btn image-gen-close hidden" type="button" title="关闭">×</button>
+          </div>
+          <div id="imageGenPrompt" class="image-gen-prompt" title=""></div>
+          <div class="image-gen-bar"><div class="image-gen-bar-inner"></div></div>
+        </div>
+        <div id="imageTaskEmpty" class="image-task-empty muted">暂无生图任务。AI 生成图片时，进度会显示在这里。</div>
+      </section>
+
+      <!-- AI 助手（合并了原 AI 操作 / AI 对话） -->
+      <section id="aiView" class="panel tab-panel" data-tab-panel="ai">
+
+        <!-- 快捷指令已经搬到顶部 ribbon 的「快捷指令 ▾」菜单里，这里不再重复展示，
+             把整块空间留给对话流。 -->
+
+        <!-- AI 智能推荐的快捷动作（AI 调用 suggest_quick_actions 后才出现） -->
+        <div id="suggestedActions" class="quick-actions suggested-actions hidden">
+          <div class="suggested-actions-header">
+            <span class="suggested-actions-title">AI 推荐</span>
+            <button type="button" id="suggestedActionsClear" class="suggested-actions-clear" title="清除推荐">×</button>
+          </div>
+          <div id="suggestedActionsList" class="quick-actions-row"></div>
+        </div>
+
+        <!-- 生图进度面板已移到独立「生图」tab（imageView），不再占用聊天区空间 -->
+
+        <!-- 对话流 -->
+        <div class="chat-stream-wrap">
+          <div id="chatStream" class="chat-stream" aria-live="polite"></div>
+          <button id="chatJumpLatest" class="chat-jump-latest hidden" type="button" title="回到最新消息" aria-label="回到最新消息">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+            <span>最新</span>
+          </button>
+        </div>
+
+        <!-- 待审批工具（预览模式下出现） -->
+        <div id="chatPending" class="chat-pending hidden">
+          <div class="chat-pending-header">
+            <strong>待执行的工具调用</strong>
+            <small class="muted">预览模式：确认后才会写入文档</small>
+          </div>
+          <div id="chatPendingList"></div>
+          <div class="button-grid two-col">
+            <button id="chatApproveAllBtn" class="primary-btn" type="button">全部执行</button>
+            <button id="chatRejectAllBtn" class="ghost-btn" type="button">全部跳过</button>
+          </div>
+        </div>
+
+        <!-- AI 工作期间统一指示：锁定状态 + 实时进度（合并避免视觉重叠） -->
+        <div id="docLockBanner" class="doc-lock-banner hidden" role="status" aria-live="polite">
+          <svg class="doc-lock-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="11" width="18" height="11" rx="2"/>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+          </svg>
+          <div class="doc-lock-text">
+            <div class="doc-lock-row1">
+              <strong id="docLockTitle">AI 工作中，文档已临时锁定</strong>
+              <span class="chat-progress-spinner" aria-hidden="true"></span>
+            </div>
+            <span id="docLockStatusText" class="muted">AI 正在思考…</span>
+          </div>
+          <div class="doc-lock-bar"><div class="doc-lock-bar-inner"></div></div>
+        </div>
+
+        <!-- AI 进度条（非文档型宿主用，如 PDF）。文档型宿主下隐藏，因为已合并到上方 banner 里 -->
+        <div id="chatProgress" class="chat-progress hidden" aria-live="polite">
+          <div class="chat-progress-row">
+            <span class="chat-progress-spinner" aria-hidden="true"></span>
+            <span id="chatProgressText" class="chat-progress-text">AI 正在思考…</span>
+          </div>
+          <div class="chat-progress-bar"><div class="chat-progress-bar-inner"></div></div>
+        </div>
+
+        <!-- 待发送的附件 chip 条（图片缩略图 + 文件图标），点 × 删除 -->
+        <div id="chatAttachments" class="chat-attachments hidden"></div>
+
+        <!-- 输入框上方的快捷入口（模板画廊等）。当前模型/宿主下没可用入口时整行 hidden -->
+        <div id="chatContextActions" class="chat-context-actions hidden">
+          <button id="chatHtmlGalleryBtn" class="chat-context-btn" type="button" title="模板画廊 — 浏览所有 HTML 幻灯片模板（有图片预览）">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="3" y="3" width="7" height="7" rx="1"/>
+              <rect x="14" y="3" width="7" height="7" rx="1"/>
+              <rect x="3" y="14" width="7" height="7" rx="1"/>
+              <rect x="14" y="14" width="7" height="7" rx="1"/>
+            </svg>
+            <span>模板画廊</span>
+          </button>
+        </div>
+
+        <!-- 单次模型 override：点了才出现，本次发送用指定模型，发送完自动清空 -->
+        <div id="chatModelOverrideBar" class="chat-model-override-bar hidden">
+          <span class="chat-model-override-label">本次用：</span>
+          <span id="chatModelOverrideText" class="chat-model-override-text">—</span>
+          <button id="chatModelOverrideClearBtn" class="chat-model-override-clear" type="button" title="取消临时模型" aria-label="取消临时模型">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+
+        <!-- 修订模式（仅 WPS 文字）：开后 AI 改动记为 Word 原生修订，可逐条接受 / 全部回撤 -->
+        <div id="reviseModeBar" class="revise-mode-bar hidden">
+          <label class="revise-toggle" title="开启后 AI 对文档的改动会记为 Word 原生修订（可逐条接受 / 拒绝），作者标为「灵犀AI」，方便像审稿一样审 AI 的改动">
+            <input type="checkbox" id="reviseModeToggle" />
+            <span class="revise-toggle-track"><span class="revise-toggle-thumb"></span></span>
+            <span class="revise-toggle-text">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+              修订模式
+            </span>
+          </label>
+          <div id="reviseModeActions" class="revise-mode-actions hidden">
+            <button type="button" id="reviseAcceptAllBtn" class="revise-act-btn" title="接受全部修订">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+              接受全部
+            </button>
+            <button type="button" id="reviseRejectAllBtn" class="revise-act-btn revise-act-reject" title="全部回撤：拒绝所有修订，还原到改动前">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>
+              全部回撤
+            </button>
+            <span class="revise-applying" aria-live="polite"><span class="revise-spin" aria-hidden="true"></span>应用中…</span>
+          </div>
+        </div>
+
+        <!-- 技能沉淀提示：多轮有实际操作后，提示用户把这轮对话总结成可复用技能 -->
+        <div id="skillSuggestBar" class="skill-suggest-bar hidden">
+          <span class="skill-suggest-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"/></svg>
+          </span>
+          <span class="skill-suggest-text">这轮做了不少操作，要不要总结成一个技能？以后可一键复用。</span>
+          <button type="button" id="skillSuggestBtn" class="skill-suggest-btn">总结成技能</button>
+          <button type="button" id="skillSuggestDismissBtn" class="skill-suggest-dismiss" title="不用了" aria-label="不用了">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+
+        <!-- 输入框：上 textarea + 下工具栏（左 + 上传、右 ↑ 发送 / ◼ 停止）-->
+        <div class="chat-input-box">
+          <textarea id="chatInput" rows="3" placeholder="例如：把当前选区内容润色得更专业"></textarea>
+          <div class="chat-input-toolbar">
+            <input id="chatAttachFile" type="file" multiple accept="image/*,application/pdf,.pdf,.txt,.md,.csv,.json,.js,.ts,.py,.html,.css,.xml,.yaml,.yml,.log" style="display:none" />
+            <button id="chatAttachBtn" class="chat-toolbar-btn" type="button" title="上传图片 / PDF / 文本附件作为 AI 的参考" aria-label="添加附件">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <line x1="12" y1="5" x2="12" y2="19"/>
+                <line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+            </button>
+            <button id="chatAttachActiveBtn" class="chat-toolbar-btn hidden" type="button" title="附加当前打开的 PDF" aria-label="附加当前 PDF">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+                <line x1="8" y1="13" x2="16" y2="13"/>
+                <line x1="8" y1="17" x2="16" y2="17"/>
+                <line x1="8" y1="9" x2="11" y2="9"/>
+              </svg>
+            </button>
+            <button id="chatModelOverrideBtn" class="chat-toolbar-btn" type="button" title="临时切换本次对话的模型（不改默认设置）" aria-label="临时切换模型">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polyline points="17 1 21 5 17 9"/>
+                <path d="M3 11V9a4 4 0 0 1 4-4h14"/>
+                <polyline points="7 23 3 19 7 15"/>
+                <path d="M21 13v2a4 4 0 0 1-4 4H3"/>
+              </svg>
+            </button>
+            <!-- 当前模型的能力 chip 跟附件按钮放一起，让用户在打字前就看到"图像/PDF/思考"是否可用。
+                 三个 chip 默认 hidden，updateCapabilityBadges() 按当前模型亮起对应的。 -->
+            <span id="capImage" class="cap-badge hidden" title="支持图像输入" aria-label="图像">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                <circle cx="8.5" cy="8.5" r="1.5"/>
+                <polyline points="21 15 16 10 5 21"/>
+              </svg>
+            </span>
+            <span id="capPdf" class="cap-badge hidden" title="支持 PDF 附件输入" aria-label="PDF">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+                <line x1="8" y1="13" x2="16" y2="13"/>
+                <line x1="8" y1="17" x2="16" y2="17"/>
+              </svg>
+            </span>
+            <div class="chat-toolbar-spacer"></div>
+            <!-- 思考强度切换：挪到发送按钮紧左侧，方便发消息前顺手调档 -->
+            <span id="capThinking" class="cap-badge cap-thinking hidden" title="点击切换思考强度">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M9 18h6"/>
+                <path d="M10 22h4"/>
+                <path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"/>
+              </svg>
+              <span id="capThinkingLevel">中</span>
+            </span>
+            <button id="chatSendBtn" class="chat-toolbar-btn chat-send-btn" type="button" title="发送（Enter / ⌘-Enter）" aria-label="发送">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <line x1="12" y1="19" x2="12" y2="5"/>
+                <polyline points="5 12 12 5 19 12"/>
+              </svg>
+            </button>
+            <button id="chatStopBtn" class="chat-toolbar-btn chat-stop-btn hidden" type="button" title="停止当前请求" aria-label="停止">
+              <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <rect x="6" y="6" width="12" height="12" rx="1.5"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 改动记录 Tab：AI 每次调用写入型工具都记一条，前/后快照可展开看 -->
+      <section id="historyView" class="panel tab-panel hidden" data-tab-panel="history">
+        <div class="panel-header">
+          <h2>改动记录</h2>
+          <small class="muted">每条记录关联到具体的磁盘文件，只显示当前打开文件的记录。</small>
+        </div>
+        <div id="historyDocBar" class="history-doc-bar hidden">
+          <span class="history-doc-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+            </svg>
+          </span>
+          <span id="historyDocName" class="history-doc-name" title=""></span>
+        </div>
+        <div class="history-toolbar">
+          <span id="historyCount" class="muted">共 0 条</span>
+          <button type="button" id="historyClearBtn" class="ghost-btn">清空全部</button>
+        </div>
+        <div id="historyEmpty" class="history-empty">
+          <p>暂无改动记录。让 AI 帮你做点什么，这里就会显示。</p>
+        </div>
+        <div id="historyList" class="history-list"></div>
+      </section>
+    </main>
+
+    <!-- PPT 风格预设 modal（ribbon「PPT 风格」按钮触发） -->
+    <div id="stylePresetModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
+      <div class="modal-card modal-card-wide style-preset-card">
+        <div class="modal-header">
+          <h3>PPT 风格预设</h3>
+          <button class="modal-close" id="stylePresetCloseBtn" type="button" title="关闭">×</button>
+        </div>
+        <div class="modal-body style-preset-body">
+          <!-- 顶部启用开关 + 实时预览。预览块用当前所有色/字段拼一张迷你幻灯片，
+               所见即所得，比 5 个分散的 color input 直观得多。 -->
+          <div class="style-preset-toolbar">
+            <label class="field-row toolbar-toggle">
+              <input id="styleEnabled" type="checkbox" />
+              <span>启用统一样式 <span class="muted">（AI 生成 PPT 时套用本预设）</span></span>
+            </label>
+          </div>
+
+          <div id="styleLivePreview" class="style-live-preview" aria-label="风格预览">
+            <div class="style-live-slide">
+              <div class="style-live-accent"></div>
+              <div class="style-live-title">标题示例 Title Sample</div>
+              <div class="style-live-body">正文示例 · Body text 12345。<br/>用当前字体、字号、颜色即时渲染。</div>
+              <div class="style-live-chip"></div>
+            </div>
+            <div class="style-live-meta" id="styleLiveMeta"></div>
+          </div>
+
+          <!-- 主题网格：替代原来的 <select>，每个卡是一张迷你幻灯片。
+               <select id="styleScheme"> 留着但 hidden 当 form 字段用。 -->
+          <section class="style-section">
+            <header class="style-section-head">
+              <span class="style-section-title">主题预设</span>
+              <span class="style-section-hint muted">点击卡片直接套用；自定义改任意颜色后会切回"自定义"</span>
+            </header>
+            <div id="styleThemeGrid" class="theme-grid" role="listbox" aria-label="主题预设网格">
+              <!-- 由 JS renderThemeGrid() 填充 -->
+            </div>
+            <select id="styleScheme" class="visually-hidden" tabindex="-1" aria-hidden="true">
+              <option value="custom">自定义</option>
+              <optgroup label="高冲击 / 专业">
+                <option value="bold-signal">Bold Signal · 自信高冲击</option>
+                <option value="electric-studio">Electric Studio · 干净专业</option>
+              </optgroup>
+              <optgroup label="活力 / 创意">
+                <option value="creative-voltage">Creative Voltage · 复古活力</option>
+                <option value="pastel-geometry">Pastel Geometry · 友好亲切</option>
+                <option value="split-pastel">Split Pastel · 活泼现代</option>
+              </optgroup>
+              <optgroup label="精致 / 编辑">
+                <option value="dark-botanical">Dark Botanical · 高端优雅</option>
+                <option value="notebook-tabs">Notebook Tabs · 编辑感</option>
+                <option value="vintage-editorial">Vintage Editorial · 个人腔调</option>
+              </optgroup>
+              <optgroup label="科技 / 极客">
+                <option value="neon-cyber">Neon Cyber · 未来感</option>
+                <option value="terminal-green">Terminal Green · 极客</option>
+              </optgroup>
+              <optgroup label="极简 / 文学">
+                <option value="swiss-modern">Swiss Modern · 极简精准</option>
+                <option value="paper-ink">Paper & Ink · 文学沉稳</option>
+              </optgroup>
+              <optgroup label="高冲击 / 专业（bold pack）">
+                <option value="blue-professional">Blue Professional · 暖白底钴蓝点缀</option>
+                <option value="bold-poster">Bold Poster · 戏剧大字</option>
+                <option value="broadside">Broadside · 暗调火橙双语</option>
+                <option value="coral">Coral · Bebas 杂志</option>
+                <option value="neo-grid-bold">Neo-Grid Bold · 新野兽派</option>
+                <option value="raw-grid">Raw Grid · 新野兽派直接</option>
+                <option value="signal">Signal · 机构权威</option>
+                <option value="studio">Studio · 高压设计感</option>
+              </optgroup>
+              <optgroup label="编辑 / 出版（bold pack）">
+                <option value="biennale-yellow">Biennale Yellow · 暖纸明黄</option>
+                <option value="cobalt-grid">Cobalt Grid · 网格出版物</option>
+                <option value="editorial-forest">Editorial Forest · 安静编辑</option>
+                <option value="editorial-tri-tone">Editorial Tri-Tone · 时装编辑</option>
+                <option value="emerald-editorial">Emerald Editorial · 杂志封面式商业</option>
+                <option value="monochrome">Monochrome · Lora 学术</option>
+                <option value="soft-editorial">Soft Editorial · 暖纸文学</option>
+              </optgroup>
+              <optgroup label="暖系 / 手作（bold pack）">
+                <option value="capsule">Capsule · Y2K 粉彩</option>
+                <option value="daisy-days">Daisy Days · 粉彩暖友好</option>
+                <option value="long-table">Long Table · 温暖社交</option>
+                <option value="peoples-platform">People's Platform · 蓝橙红丝印</option>
+                <option value="pin-and-paper">Pin & Paper · 黄纸手作感</option>
+                <option value="playful">Playful · 独立友好</option>
+                <option value="retro-zine">Retro Zine · 绿色色块独立刊</option>
+                <option value="scatterbrain">Scatterbrain · 工作坊感</option>
+              </optgroup>
+              <optgroup label="优雅 / 沉静（bold pack）">
+                <option value="cartesian">Cartesian · 暖中性 Playfair</option>
+                <option value="grove">Grove · Playfair 古典</option>
+                <option value="mat">Mat · 中世纪现代</option>
+                <option value="pink-script">Pink Script · 夜场奢华</option>
+                <option value="vellum">Vellum · 学者</option>
+              </optgroup>
+              <optgroup label="科技 / 复古（bold pack）">
+                <option value="8-bit-orbit">8-Bit Orbit · CRT 像素霓虹</option>
+                <option value="retro-windows">Retro Windows · 像素游戏感</option>
+                <option value="sakura-chroma">Sakura Chroma · 彩带条码</option>
+              </optgroup>
+              <optgroup label="极简 / 装饰（bold pack）">
+                <option value="block-frame">Block Frame · 粗黑边糖果色块</option>
+                <option value="creative-mode">Creative Mode · 多彩自信</option>
+                <option value="stencil-tablet">Stencil & Tablet · 大地色考古</option>
+              </optgroup>
+            </select>
+            <!-- 选中主题的详情（标志元素 / 推荐版式）；renderThemeGrid 选中时填充 -->
+            <div id="styleSchemePreview" class="scheme-preview hidden" aria-live="polite">
+              <div class="scheme-preview-head">
+                <span id="styleSchemePreviewLabel" class="scheme-preview-label"></span>
+                <span id="styleSchemePreviewDesc" class="scheme-preview-desc"></span>
+              </div>
+              <div id="styleSchemePreviewSwatches" class="scheme-preview-swatches"></div>
+              <div class="scheme-preview-row">
+                <span class="scheme-preview-key">标志元素</span>
+                <span id="styleSchemePreviewSignature" class="scheme-preview-val"></span>
+              </div>
+              <div class="scheme-preview-row">
+                <span class="scheme-preview-key">推荐版式</span>
+                <span id="styleSchemePreviewHints" class="scheme-preview-val"></span>
+              </div>
+            </div>
+          </section>
+
+          <!-- 字体设置：标题/正文字体字号颜色合并到一个 section，原来分散在 modal 顶部，
+               跟主题挑选混在一起难找。 -->
+          <section class="style-section">
+            <header class="style-section-head">
+              <span class="style-section-title">字体</span>
+              <span class="style-section-hint muted">挑主题会自动填字体，也可单独覆盖</span>
+            </header>
+            <div class="style-typography-grid">
+              <label class="field"><span>标题字体</span><input id="styleTitleFont" type="text" placeholder="Microsoft YaHei"/></label>
+              <label class="field"><span>标题字号</span><input id="styleTitleSize" type="number" min="8" max="96"/></label>
+              <label class="field"><span>标题颜色</span><input id="styleTitleColor" type="color"/></label>
+              <label class="field-row style-typography-bold">
+                <input id="styleTitleBold" type="checkbox" /><span>标题加粗</span>
+              </label>
+              <label class="field"><span>正文字体</span><input id="styleBodyFont" type="text" placeholder="Microsoft YaHei"/></label>
+              <label class="field"><span>正文字号</span><input id="styleBodySize" type="number" min="8" max="72"/></label>
+              <label class="field"><span>正文颜色</span><input id="styleBodyColor" type="color"/></label>
+            </div>
+          </section>
+
+          <!-- 配色微调：5 个色板字段，从原来挤在一起的 palette-grid 拎出来加 section header -->
+          <section class="style-section">
+            <header class="style-section-head">
+              <span class="style-section-title">配色微调</span>
+              <span class="style-section-hint muted">手改任意颜色 → 上面"主题预设"切回"自定义"</span>
+            </header>
+            <div class="palette-grid">
+              <label class="field"><span>主色</span><input id="stylePrimaryColor" type="color"/></label>
+              <label class="field"><span>次色</span><input id="styleSecondaryColor" type="color"/></label>
+              <label class="field"><span>强调色</span><input id="styleAccentColor" type="color"/></label>
+              <label class="field"><span>幻灯片底色</span><input id="styleBackgroundColor" type="color"/></label>
+              <label class="field"><span>卡片底色</span><input id="styleSurfaceColor" type="color"/></label>
+            </div>
+          </section>
+
+          <!-- 主题模板文件：选填，AI 会调 wpp_apply_theme 套这个模板 -->
+          <section class="style-section">
+            <header class="style-section-head">
+              <span class="style-section-title">主题模板（可选）</span>
+              <span class="style-section-hint muted">.pptx / .thmx / .potx 本地路径</span>
+            </header>
+            <input id="styleThemeFile" type="text" placeholder="C:\path\to\template.pptx" class="style-theme-file-input" />
+          </section>
+        </div>
+        <div class="modal-footer">
+          <button id="styleSaveBtn" class="primary-btn" type="button">保存</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- HTML 模板预览 modal（wpp_render_html_template 工具调用时弹出，用户可微调字段后确认插入）
+         布局：竖向 — 顶部 16:9 预览 → 中间字段表单 → 底部 chat 输入 → footer 操作按钮。
+         打开时自动把 TaskPane 撑到 960px 宽，关闭时恢复，让预览有视觉冲击力。-->
+    <div id="htmlPreviewModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
+      <div class="modal-card modal-card-wide html-preview-card">
+        <div class="modal-header">
+          <h3 id="htmlPreviewTitle">HTML 模板预览</h3>
+          <div class="modal-header-actions">
+            <button id="htmlPreviewHistoryBtn" class="ghost-btn compact-btn hidden" type="button" title="查看历史">历史 (0)</button>
+            <button class="modal-close" id="htmlPreviewCloseBtn" type="button" title="关闭">×</button>
+          </div>
+        </div>
+        <div class="modal-body html-preview-body">
+          <!-- 浮层：缓存历史（保留作为文本式列表入口；画廊侧栏里也已含历史缩略图）-->
+          <div id="htmlPreviewHistoryPanel" class="html-preview-history hidden">
+            <div class="html-preview-history-head">
+              <span>缓存历史（最新 20 条）</span>
+              <button id="htmlPreviewHistoryCloseBtn" type="button" class="ghost-btn icon-only" title="收起">×</button>
+            </div>
+            <div id="htmlPreviewHistoryList" class="html-preview-history-list"></div>
+            <div class="html-preview-history-foot">
+              <button id="htmlPreviewHistoryClearBtn" type="button" class="ghost-btn compact-btn">清空缓存</button>
+            </div>
+          </div>
+
+          <!-- 三栏布局：左 = 画廊侧栏（固定）；中 = 预览 + 字段；右 = 独立 chat -->
+          <div class="html-preview-main">
+            <!-- 左栏：模板画廊缩略图（永久可见，类似 PowerPoint 左侧幻灯片栏）；
+                 用 tab 切换"我的历史"和"模板"，默认显示"我的历史"。 -->
+            <aside id="htmlTemplateGallery" class="html-template-gallery-sidebar">
+              <div class="gallery-sidebar-head">
+                <div class="gallery-tabs">
+                  <button type="button" class="gallery-tab active" data-gallery-tab="history">我的历史</button>
+                  <button type="button" class="gallery-tab" data-gallery-tab="components">组件</button>
+                </div>
+              </div>
+              <div id="htmlTemplateGalleryList" class="html-template-gallery-list"></div>
+              <div id="htmlTemplateGalleryFoot" class="gallery-sidebar-foot hidden">
+                <button id="htmlTemplateGalleryClearBtn" type="button" class="ghost-btn compact-btn danger-btn">清空所有</button>
+              </div>
+            </aside>
+            <!-- 中栏：顶部 tab 切换「画布 / 属性」，下面 panel 二选一显示，让画布能占满 -->
+            <div class="html-preview-left">
+              <div class="html-preview-center-tabs">
+                <button type="button" class="html-preview-center-tab active" data-center-tab="canvas">画布</button>
+                <button type="button" class="html-preview-center-tab" data-center-tab="props">属性</button>
+                <div class="html-preview-center-tabs-spacer"></div>
+                <!-- 画布工具按钮：仅 canvas tab 下可见 -->
+                <div class="html-preview-center-tools" data-center-panel="canvas">
+                  <button id="htmlPreviewEditUndoBtn" type="button" class="ghost-btn icon-only" title="撤销 (Ctrl+Z)" aria-label="撤销" disabled>
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-15-6.7L3 13"/>
+                    </svg>
+                  </button>
+                  <button id="htmlPreviewEditRedoBtn" type="button" class="ghost-btn icon-only" title="重做 (Ctrl+Y)" aria-label="重做" disabled>
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 15-6.7L21 13"/>
+                    </svg>
+                  </button>
+                  <button id="htmlPreviewEditModeBtn" type="button" class="ghost-btn compact-btn" title="开启图层编辑模式：点击任意元素 → 虚线选中 → 拖动 / 编辑 / 删除 / 存为组件">编辑模式</button>
+                </div>
+              </div>
+
+              <!-- 画布 panel -->
+              <div class="html-preview-stage" data-center-panel="canvas">
+                <div class="html-preview-stage-inner with-ruler">
+                  <div class="ruler-corner" aria-hidden="true"></div>
+                  <div id="rulerTop" class="ruler ruler-top" aria-hidden="true"></div>
+                  <div id="rulerLeft" class="ruler ruler-left" aria-hidden="true"></div>
+                  <iframe id="htmlPreviewFrame" sandbox="allow-same-origin" title="预览" aria-label="幻灯片预览"></iframe>
+                </div>
+                <div class="html-preview-stage-info">
+                  <span id="htmlPreviewInfo">—</span>
+                  <span id="htmlPreviewRendering" class="html-preview-rendering hidden">渲染中…</span>
+                </div>
+              </div>
+
+              <!-- 属性 panel：默认隐藏，承载 meta + html/css 字段 -->
+              <div class="html-preview-form hidden" data-center-panel="props">
+                <div class="html-preview-meta">
+                  <div class="html-preview-meta-row">
+                    <span class="key">模板</span><span id="htmlPreviewTemplate" class="val">—</span>
+                  </div>
+                  <div class="html-preview-meta-row">
+                    <span class="key">布局</span><span id="htmlPreviewLayout" class="val">—</span>
+                  </div>
+                </div>
+                <hr class="html-preview-sep" />
+                <div id="htmlPreviewFields" class="html-preview-fields">
+                  <!-- 字段输入由 JS 动态注入 -->
+                </div>
+              </div>
+            </div>
+            <!-- 右栏：双 tab chat —— ① 美化当前（改单页） ② 统一修改（改"我的历史"全部条目）-->
+            <aside class="html-preview-chat">
+              <div class="html-preview-chat-head">
+                <div class="preview-chat-tabs">
+                  <button type="button" class="preview-chat-tab active" data-chat-tab="current">美化当前</button>
+                  <button type="button" class="preview-chat-tab" data-chat-tab="unified">统一修改</button>
+                </div>
+                <div class="html-preview-chat-head-actions">
+                  <button id="htmlPreviewPickComponentsBtn" type="button" class="ghost-btn compact-btn" title="挑选当前组件库里的组件，让 AI 在下一次美化时复用">选用组件 <span id="htmlPreviewPickComponentsCount" class="badge badge-muted">0</span></button>
+                  <button id="htmlPreviewChatClearBtn" type="button" class="ghost-btn icon-only" title="清空当前 tab 的会话" aria-label="清空">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              <!-- Tab 1: 美化当前预览 -->
+              <div id="htmlPreviewChatLog" class="html-preview-chat-log" data-chat-panel="current">
+                <div class="html-preview-chat-empty">让 AI 帮你改预览：<br>· 改文字 ——「标题改短」「数字换成 73%」<br>· 切排版 ——「换成有图标的网格」「改成大数字版式」<br>· 调配色 ——「换成深色背景」「主色改成蓝色」<br>· 整体美化 ——「美化排版」「更专业」<br>· 复用组件 —— 点上方「选用组件」挑几个，让 AI 在新页里组合它们</div>
+              </div>
+              <div class="html-preview-chat-input-row" data-chat-panel="current">
+                <textarea id="htmlPreviewChatInput" rows="2" placeholder="只对当前预览生效（Enter 发送）"></textarea>
+                <button id="htmlPreviewChatSendBtn" class="primary-btn compact-btn" type="button">发送</button>
+              </div>
+              <!-- Tab 2: 统一修改"我的历史"全部条目 -->
+              <div id="htmlPreviewUnifiedLog" class="html-preview-chat-log hidden" data-chat-panel="unified">
+                <div class="html-preview-chat-empty">让 AI **批量改"我的历史"全部幻灯片**：<br>· 全局换色 ——「所有背景换成深海军蓝」<br>· 字体统一 ——「标题字号统一加大到 80px」<br>· 装饰统一 ——「每页顶部加 4px 渐变条」<br>· 风格收敛 ——「整套都更商务一点，去掉花哨装饰」<br><br>⚠ 每条历史都会被 AI 单独处理一次，可能慢；会自动跳过 freeform 之外的固定布局（它们的 data 跟 schema 绑死）。</div>
+              </div>
+              <div class="html-preview-chat-input-row hidden" data-chat-panel="unified">
+                <textarea id="htmlPreviewUnifiedInput" rows="2" placeholder="一条指令应用到所有历史幻灯片（Enter 发送）"></textarea>
+                <button id="htmlPreviewUnifiedSendBtn" class="primary-btn compact-btn" type="button">应用</button>
+              </div>
+            </aside>
+          </div>
+        </div>
+        <div class="modal-footer html-preview-footer">
+          <div class="modal-footer-actions">
+            <button id="htmlPreviewSaveBtn" class="ghost-btn compact-btn" type="button" title="覆盖保存当前预览到「我的历史」对应条目；没绑定就新建">保存</button>
+            <button id="htmlPreviewExtractCompsBtn" class="ghost-btn compact-btn" type="button" title="让 AI 扫一遍当前 freeform 幻灯片的 HTML/CSS，把里面的可复用视觉单元（指标卡、状态徽章、引言块等）逐个抽出来存入组件库">AI从当前页提取组件</button>
+            <button id="htmlPreviewSaveAsCompBtn" class="ghost-btn compact-btn" type="button" title="把整张 freeform 幻灯片的 HTML+CSS 存为一个大组件（适合整页模板）">整页存为组件</button>
+            <button id="htmlPreviewInsertBtn" class="primary-btn compact-btn" type="button">插入到末尾</button>
+            <button id="htmlPreviewReplaceActiveBtn" class="primary-btn compact-btn" type="button" title="清空 WPS 演示里当前选中那一页的所有形状，再贴上预览结果">替换当前选中</button>
+          </div>
+        </div>
+
+        <!-- 组件选择弹窗（叠在 html-preview-card 上，定位 absolute 内层） -->
+        <div id="htmlPreviewComponentsPicker" class="component-picker-overlay hidden" role="dialog" aria-label="选用组件">
+          <div class="component-picker-card">
+            <div class="component-picker-head">
+              <span>选用组件（让 AI 在下次美化时把这些复用到当前页）</span>
+              <button id="htmlPreviewPickComponentsCloseBtn" type="button" class="ghost-btn icon-only" title="关闭">×</button>
+            </div>
+            <div id="htmlPreviewComponentsList" class="component-picker-list">
+              <!-- 由 renderComponentPicker 动态注入 -->
+            </div>
+            <div class="component-picker-foot">
+              <button id="htmlPreviewPickComponentsClearBtn" type="button" class="ghost-btn compact-btn">取消全选</button>
+              <span class="component-picker-foot-spacer"></span>
+              <button id="htmlPreviewPickComponentsConfirmBtn" type="button" class="primary-btn compact-btn">确定</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 编辑模式：选中元素的编辑弹窗（文字 / 颜色 / 字号） -->
+        <div id="htmlPreviewEditElModal" class="component-picker-overlay hidden" role="dialog" aria-label="编辑元素">
+          <div class="component-picker-card component-picker-card-narrow">
+            <div class="component-picker-head">
+              <span>编辑元素 <span id="htmlPreviewEditElTag" style="color:var(--muted);font-weight:400;font-size:11px"></span></span>
+              <button id="htmlPreviewEditElCloseBtn" type="button" class="ghost-btn icon-only" title="关闭">×</button>
+            </div>
+            <div class="component-picker-form">
+              <label class="field"><span>文字内容</span><textarea id="htmlPreviewEditElText" rows="3" placeholder="（仅含文本的元素才可编辑）"></textarea></label>
+              <div style="display:flex;gap:8px;align-items:flex-end">
+                <label class="field" style="flex:1"><span>文字颜色</span><input id="htmlPreviewEditElColor" type="color"/></label>
+                <label class="field" style="flex:1"><span>字号 px</span><input id="htmlPreviewEditElSize" type="number" min="10" max="400" step="1"/></label>
+                <label class="field" style="flex:1"><span>字重</span>
+                  <select id="htmlPreviewEditElWeight">
+                    <option value="">（不改）</option>
+                    <option value="300">300 细</option>
+                    <option value="400">400 常规</option>
+                    <option value="500">500</option>
+                    <option value="600">600</option>
+                    <option value="700">700 粗</option>
+                    <option value="800">800</option>
+                    <option value="900">900 黑</option>
+                  </select>
+                </label>
+              </div>
+              <p class="field-tip">改动会立即在预览里生效；最终通过左侧 footer 的「保存」入库。</p>
+            </div>
+            <div class="component-picker-foot">
+              <span class="component-picker-foot-spacer"></span>
+              <button id="htmlPreviewEditElCancelBtn" type="button" class="ghost-btn compact-btn">取消</button>
+              <button id="htmlPreviewEditElApplyBtn" type="button" class="primary-btn compact-btn">应用</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 抽取后的组件预览：每条带缩略图，可勾选/取消保留 -->
+        <div id="htmlPreviewExtractReviewModal" class="component-picker-overlay hidden" role="dialog" aria-label="本次抽取的组件">
+          <div class="component-picker-card">
+            <div class="component-picker-head">
+              <span id="htmlPreviewExtractReviewTitle">本次抽到的组件</span>
+              <button id="htmlPreviewExtractReviewCloseBtn" type="button" class="ghost-btn icon-only" title="关闭">×</button>
+            </div>
+            <div id="htmlPreviewExtractReviewList" class="component-picker-list"></div>
+            <div class="component-picker-foot">
+              <span id="htmlPreviewExtractReviewSummary" class="component-picker-foot-spacer" style="font-size:11px;color:var(--muted)"></span>
+              <button id="htmlPreviewExtractReviewDiscardBtn" type="button" class="ghost-btn compact-btn" title="把未勾选的组件从库里删掉">删除未勾选</button>
+              <button id="htmlPreviewExtractReviewKeepAllBtn" type="button" class="primary-btn compact-btn">全部保留</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 保存为组件弹窗：填名字 + 描述 -->
+        <div id="htmlPreviewSaveAsCompModal" class="component-picker-overlay hidden" role="dialog" aria-label="保存为组件">
+          <div class="component-picker-card component-picker-card-narrow">
+            <div class="component-picker-head">
+              <span>保存当前预览为组件</span>
+              <button id="htmlPreviewSaveAsCompCloseBtn" type="button" class="ghost-btn icon-only" title="关闭">×</button>
+            </div>
+            <div class="component-picker-form">
+              <label class="field"><span>名称</span><input id="htmlPreviewSaveAsCompName" type="text" placeholder="如：指标卡网格 / 完成清单 / 团队介绍卡" maxlength="40"/></label>
+              <label class="field"><span>描述（可选）</span><textarea id="htmlPreviewSaveAsCompDesc" rows="2" placeholder="一句话说明这个组件是什么时候用、有什么特点。AI 在新页面挑组件时会读这段。" maxlength="200"></textarea></label>
+              <p class="field-tip" id="htmlPreviewSaveAsCompTip">仅在 freeform 布局下可用；非 freeform 的固定布局是 schema 化的，已经天然可复用。</p>
+            </div>
+            <div class="component-picker-foot">
+              <span class="component-picker-foot-spacer"></span>
+              <button id="htmlPreviewSaveAsCompConfirmBtn" type="button" class="primary-btn compact-btn">保存到组件库</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 统一 PPT 风格 modal（ribbon「统一风格」按钮触发） -->
+    <div id="unifyModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3>统一 PPT 风格</h3>
+          <button class="modal-close" id="unifyCloseBtn" type="button" title="关闭">×</button>
+        </div>
+        <div class="modal-body">
+          <p class="muted">
+            把当前 PPT 的大纲贴进来（或点「从当前 PPT 提取」自动填）。AI 会：①应用风格预设；②按每页文字判断是否需要配图，需要就生成并插入；③加 fade 切换动画；④自检空白页。
+          </p>
+          <textarea id="unifyOutlineText" rows="12" placeholder="# 项目背景&#10;## 业务现状&#10;..."></textarea>
+          <div class="modal-actions-row">
+            <button id="unifyExtractBtn" class="ghost-btn compact-btn" type="button">从当前 PPT 提取大纲</button>
+            <button id="unifyClearBtn" class="ghost-btn compact-btn" type="button">清空</button>
+          </div>
+          <label class="field-row">
+            <input id="unifyAutoImage" type="checkbox" checked />
+            <span>自动配图（按页内容判断是否需要；要求已启用图像生成）</span>
+          </label>
+        </div>
+        <div class="modal-footer">
+          <button id="unifyExecuteBtn" class="primary-btn" type="button">执行统一</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 大纲 modal（点击「大纲生成 PPT」触发） -->
+    <div id="outlineModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3>大纲生成 PPT</h3>
+          <button class="modal-close" id="outlineCloseBtn" type="button" title="关闭">×</button>
+        </div>
+        <div class="modal-body">
+          <p class="muted">把大纲贴进来（markdown 格式：# 一级标题 / ## 二级标题 / - 要点）。AI 会按一级标题分页生成。</p>
+          <textarea id="outlineText" rows="14" placeholder="# 项目背景&#10;## 业务现状&#10;- 痛点 1&#10;- 痛点 2&#10;## 目标&#10;# 解决方案&#10;..."></textarea>
+          <div class="modal-actions-row">
+            <button id="outlineExtractBtn" class="ghost-btn compact-btn" type="button">从当前 PPT 提取</button>
+            <button id="outlineClearBtn" class="ghost-btn compact-btn" type="button">清空</button>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button id="outlineGenerateBtn" class="primary-btn" type="button">生成 PPT</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 对照翻译弹窗（PDF）：选原文/目标语言 → 流式生成 原文|译文 对照表 -->
+    <div id="parallelTranslateModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="ptTitle">
+      <div class="modal-card pt-card">
+        <div class="modal-header">
+          <h3 id="ptTitle">对照翻译</h3>
+          <button class="modal-close" id="ptCloseBtn" type="button" title="关闭">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="pt-controls">
+            <label class="pt-field">
+              <span>原文语言</span>
+              <select id="ptSourceLang"></select>
+            </label>
+            <span class="pt-arrow" aria-hidden="true">→</span>
+            <label class="pt-field">
+              <span>目标语言</span>
+              <select id="ptTargetLang"></select>
+            </label>
+            <label class="pt-field">
+              <span>范围</span>
+              <select id="ptScope">
+                <option value="all">全文</option>
+                <option value="pages">指定页</option>
+              </select>
+            </label>
+            <label class="pt-field pt-pages-field hidden" id="ptPagesField">
+              <span>页码</span>
+              <input id="ptPages" type="text" placeholder="如 1-5, 8, 12-15" />
+            </label>
+            <button id="ptRunBtn" class="primary-btn compact-btn" type="button">开始翻译</button>
+          </div>
+          <div id="ptStatus" class="pt-status muted hidden"></div>
+          <div id="ptResult" class="pt-result markdown-body" aria-live="polite">
+            <p class="muted pt-empty">选好语言后点「开始翻译」，这里会显示原文 / 译文对照。</p>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button id="ptCopyBtn" class="ghost-btn compact-btn" type="button">复制结果</button>
+          <button id="ptCloseBtn2" class="ghost-btn compact-btn" type="button">关闭</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 改动记录条目详情弹窗 -->
+    <div id="historyDetailModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
+      <div class="modal-card modal-card-wide">
+        <div class="modal-header">
+          <h3 id="historyDetailTitle">改动详情</h3>
+          <button class="modal-close" id="historyDetailCloseBtn" type="button" title="关闭">×</button>
+        </div>
+        <div class="modal-body" id="historyDetailBody"></div>
+      </div>
+    </div>
+
+    <!-- Ribbon 快捷输入弹窗：生图只填生图提示词；其他占位型按钮只填占位内容，确认后自动发送 -->
+    <div id="quickPromptModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
+      <div class="modal-card quick-prompt-card">
+        <div class="modal-header">
+          <div>
+            <h3 id="quickPromptTitle">快捷操作</h3>
+            <p id="quickPromptSubtitle" class="modal-subtitle">填写必要内容后自动发送给 AI。</p>
+          </div>
+          <button class="modal-close" id="quickPromptCloseBtn" type="button" title="关闭">×</button>
+        </div>
+        <div id="quickPromptBody" class="modal-body quick-prompt-body"></div>
+        <div class="modal-footer quick-prompt-footer">
+          <button id="quickPromptCancelBtn" class="ghost-btn" type="button">取消</button>
+          <button id="quickPromptSubmitBtn" class="primary-btn" type="button">开始执行</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 生图素材库：记录 generate_image 生成历史，可分组、插入或选单图继续修改 -->
+    <div id="materialLibraryModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
+      <div class="modal-card modal-card-wide material-library-card">
+        <div class="modal-header">
+          <div>
+            <h3>素材库</h3>
+            <p class="modal-subtitle">生图历史会自动保存到这里，选中素材后可插入当前文档。</p>
+          </div>
+          <div class="material-library-header-actions">
+            <button id="materialImportBtn" class="ghost-btn compact-btn" type="button" title="从本地导入图片到素材库">导入本地图片</button>
+            <button id="materialLibraryRefreshBtn" class="ghost-btn compact-btn" type="button" title="重新读取历史">刷新</button>
+            <button id="materialLibraryClearBtn" class="ghost-btn compact-btn" type="button" title="清空本地生图历史">清空</button>
+          </div>
+          <input id="materialImportInput" type="file" accept="image/*" multiple hidden />
+          <button class="modal-close" id="materialLibraryCloseBtn" type="button" title="关闭">×</button>
+        </div>
+        <div class="modal-body material-library-body">
+          <aside class="material-group-panel">
+            <div class="material-group-title">分组</div>
+            <div id="materialGroupList" class="material-group-list"></div>
+            <div class="material-group-create">
+              <input id="materialGroupNameInput" type="text" placeholder="新建分组" />
+              <button id="materialGroupAddBtn" class="ghost-btn compact-btn" type="button">添加</button>
+            </div>
+          </aside>
+          <section class="material-library-main">
+            <div class="material-library-filterbar">
+              <div class="material-search-wrap">
+                <svg class="material-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input id="materialSearchInput" class="material-search-input" type="search" placeholder="搜索提示词 / 标签 / 项目…" aria-label="搜索素材" />
+              </div>
+              <label class="material-filter-select" title="按项目筛选">
+                <span>项目</span>
+                <select id="materialProjectFilter"><option value="">全部项目</option></select>
+              </label>
+              <span id="materialSelectedCount" class="muted material-selected-count">未选择素材</span>
+            </div>
+            <div class="material-library-toolbar">
+              <label class="material-move-control" title="移动到分组">
+                <span>分组</span>
+                <select id="materialMoveGroupSelect" class="material-move-select"></select>
+              </label>
+              <button id="materialMoveBtn" class="ghost-btn compact-btn" type="button">移动</button>
+              <button id="materialInsertBtn" class="primary-btn compact-btn" type="button">插入当前文档</button>
+              <button id="materialModifyBtn" class="ghost-btn compact-btn" type="button">修改</button>
+              <button id="materialCopyBtn" class="ghost-btn compact-btn" type="button">复制地址</button>
+              <button id="materialDeleteBtn" class="ghost-btn compact-btn danger" type="button">删除</button>
+            </div>
+            <div id="materialLibraryEmpty" class="material-library-empty">
+              <p>暂无生图历史。用「AI 生成图片」生成后，会自动保存到这里。</p>
+            </div>
+            <div id="materialLibraryList" class="material-library-grid"></div>
+          </section>
+        </div>
+      </div>
+    </div>
+
+    <div id="materialPreviewModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="materialPreviewTitle">
+      <div class="modal-card modal-card-wide material-preview-card">
+        <div class="modal-header">
+          <div>
+            <h3 id="materialPreviewTitle">素材预览</h3>
+            <p id="materialPreviewMeta" class="modal-subtitle">生成图片</p>
+          </div>
+          <button class="modal-close" id="materialPreviewCloseBtn" type="button" title="关闭">×</button>
+        </div>
+        <div class="modal-body material-preview-body">
+          <div class="material-preview-stage">
+            <img id="materialPreviewImage" class="material-preview-image hidden" alt="素材预览" />
+            <span id="materialPreviewStatus" class="material-preview-status">加载中</span>
+            <div id="materialCropOverlay" class="material-crop-overlay hidden"><div class="material-crop-sel"></div></div>
+            <canvas id="materialBrushCanvas" class="material-brush-canvas hidden"></canvas>
+            <div id="materialEditOverlay" class="material-edit-overlay hidden">
+              <div class="material-edit-spinner" aria-hidden="true"></div>
+              <div class="material-edit-status" data-role="editstatus">处理中…</div>
+              <button id="materialEditCancelBtn" class="ghost-btn compact-btn" type="button">取消</button>
+            </div>
+          </div>
+          <div id="materialBrushBar" class="material-brush-bar hidden">
+            <div class="material-brush-controls">
+              <label class="material-brush-size">画笔 <input id="materialBrushSize" type="range" min="6" max="90" value="30" /></label>
+              <button id="materialBrushClearBtn" class="ghost-btn compact-btn" type="button">清除涂抹</button>
+            </div>
+            <label class="material-brush-prompt-wrap" for="materialBrushPrompt">
+              <span class="material-brush-prompt-label">重绘提示词</span>
+              <textarea id="materialBrushPrompt" class="material-brush-prompt" rows="3" placeholder="如：把涂抹处改成红色气球；抠图可留空"></textarea>
+            </label>
+            <div class="material-brush-actions">
+              <button id="materialBrushInpaintBtn" class="primary-btn compact-btn" type="button">涂抹处重绘</button>
+              <button id="materialBrushCutoutBtn" class="ghost-btn compact-btn" type="button">抠出涂抹主体</button>
+              <button id="materialBrushCancelBtn" class="ghost-btn compact-btn" type="button">退出</button>
+            </div>
+          </div>
+          <div class="material-preview-info">
+            <div class="material-preview-label">提示词</div>
+            <p id="materialPreviewPrompt" class="material-preview-prompt">未记录提示词</p>
+            <div id="materialPreviewUrl" class="material-preview-url"></div>
+          </div>
+        </div>
+        <div class="modal-footer material-preview-footer">
+          <button id="materialPreviewCropBtn" class="ghost-btn compact-btn" type="button" title="框选一块区域裁剪成新素材">裁剪</button>
+          <button id="materialCropSaveBtn" class="primary-btn compact-btn hidden" type="button">裁剪并存素材</button>
+          <button id="materialCropCancelBtn" class="ghost-btn compact-btn hidden" type="button">取消裁剪</button>
+          <button id="materialCutoutBtn" class="ghost-btn compact-btn hidden" type="button" title="智能抠图：本地离线去背景（发丝级软边），结果存为新素材；本地不可用时回退 Codex 桥接 AI 抠图">智能抠图</button>
+          <button id="materialLocalCutoutBtn" class="ghost-btn compact-btn hidden" type="button" title="只使用本地模型去背景，输出透明 PNG，不调用 AI 图像接口">本地模型抠图</button>
+          <button id="materialBrushEditBtn" class="ghost-btn compact-btn hidden" type="button" title="画笔涂抹框定主体后：抠出涂抹主体（本地离线）/ 涂抹处重绘（仅 Codex 桥接）">画笔编辑</button>
+          <button id="materialPreviewSaveAsBtn" class="ghost-btn compact-btn" type="button">另存为</button>
+          <button id="materialPreviewCopyBtn" class="ghost-btn compact-btn" type="button">复制地址</button>
+          <button id="materialPreviewInsertBtn" class="primary-btn compact-btn" type="button">插入当前文档</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="materialCutoutChoiceModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="materialCutoutChoiceTitle">
+      <div class="modal-card material-cutout-choice-card">
+        <div class="modal-header">
+          <div>
+            <h3 id="materialCutoutChoiceTitle">选择抠图方式</h3>
+            <p class="modal-subtitle">没有检测到画笔选区，可以描述要保留的主体，或直接整张去背景。</p>
+          </div>
+          <button class="modal-close" id="materialCutoutChoiceCloseBtn" type="button" title="关闭">×</button>
+        </div>
+        <div class="modal-body material-cutout-choice-body">
+          <label class="material-cutout-choice-label" for="materialCutoutDescribeInput">需要保留的部分</label>
+          <textarea id="materialCutoutDescribeInput" class="material-cutout-choice-input" rows="3" placeholder="例如：左边的人物、中间的产品、前景的花束"></textarea>
+        </div>
+        <div class="modal-footer material-cutout-choice-actions">
+          <button id="materialCutoutAllBtn" class="ghost-btn compact-btn" type="button">整张去背景</button>
+          <button id="materialCutoutDescribeBtn" class="primary-btn compact-btn" type="button">按描述抠图</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="formatPreviewModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="formatPreviewTitle">
+      <div class="modal-card modal-card-wide format-preview-card">
+        <div class="modal-header">
+          <div>
+            <h3 id="formatPreviewTitle">AI 排版预览</h3>
+            <p id="formatPreviewMeta" class="modal-subtitle">预览排版效果，确认后替换全文。</p>
+          </div>
+          <button class="modal-close" id="formatPreviewCloseBtn" type="button" title="关闭">×</button>
+        </div>
+        <div class="modal-body format-preview-body">
+          <aside class="format-preview-side">
+            <div id="formatPreviewScopeRow" class="format-preview-scope hidden">
+              <label class="format-preview-label">排版范围</label>
+              <div class="format-preview-scope-options" role="radiogroup" aria-label="排版范围">
+                <label class="format-preview-scope-option">
+                  <input type="radio" name="formatPreviewScope" value="selection"/>
+                  <span>仅选中区域</span>
+                </label>
+                <label class="format-preview-scope-option">
+                  <input type="radio" name="formatPreviewScope" value="doc"/>
+                  <span>全文</span>
+                </label>
+              </div>
+            </div>
+            <div class="format-template-row">
+              <label class="format-preview-label" for="formatTemplateSelect">排版模板</label>
+              <div class="format-template-controls">
+                <select id="formatTemplateSelect"></select>
+                <button type="button" id="formatTemplateNewBtn" class="ghost-btn compact-btn" title="基于当前模板复制一份自定义模板">新建</button>
+                <button type="button" id="formatTemplateEditBtn" class="ghost-btn compact-btn" title="编辑自定义模板（内置模板请先「新建」复制）">编辑</button>
+                <button type="button" id="formatTemplateDeleteBtn" class="ghost-btn compact-btn" title="删除自定义模板">删除</button>
+              </div>
+              <div id="formatTemplateSample" class="format-template-sample" role="button" title="点击放大查看完整示例"></div>
+              <button type="button" id="formatTemplateZoomBtn" class="ghost-btn compact-btn format-template-zoom-btn" title="弹窗查看该模板的完整排版示例">查看完整示例</button>
+            </div>
+            <label class="format-preview-label" for="formatPreviewPromptInput">排版要求</label>
+            <div class="format-preview-presets">
+              <span class="format-preview-presets-label">常用预设</span>
+              <div id="formatPreviewPresetList" class="format-preview-presets-list"></div>
+            </div>
+            <textarea id="formatPreviewPromptInput" class="format-preview-prompt-input" rows="8" placeholder="可以留空。留空时 AI 会自动识别文档类型（合同 / 招标 / 公文 / 论文 等）再排版。"></textarea>
+            <p class="format-preview-tip">点击「开始排版」按当前要求生成预览；留空则 AI 自动识别文档类型。</p>
+          </aside>
+          <section class="format-preview-main">
+            <div id="formatPreviewLoading" class="format-preview-loading hidden">
+              <span class="chat-progress-spinner" aria-hidden="true"></span>
+              <span>正在生成排版预览…</span>
+            </div>
+            <div id="formatPreviewImpact" class="format-preview-impact hidden"></div>
+            <div id="formatPreviewContent" class="format-preview-content"></div>
+          </section>
+        </div>
+        <div class="modal-footer format-preview-footer">
+          <button id="formatPreviewRegenerateBtn" class="ghost-btn compact-btn" type="button">重新生成</button>
+          <button id="formatPreviewExportBtn" class="ghost-btn compact-btn" type="button" title="不动当前文档，把排版结果另存为新的 Word 文件">导出为 Word 文件</button>
+          <button id="formatPreviewCancelBtn" class="ghost-btn compact-btn" type="button">取消</button>
+          <button id="formatPreviewReplaceBtn" class="primary-btn compact-btn" type="button">替换全文</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 合规检查（P2-2）：检查清单输入 -->
+    <div id="complianceModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
+      <div class="modal-card">
+        <div class="modal-header">
+          <div>
+            <h3>合规检查</h3>
+            <p class="modal-subtitle">按检查清单核查全文，命中问题以 Word 批注标在原文位置（按高/中/低分级）。</p>
+          </div>
+          <button class="modal-close" id="complianceCloseBtn" type="button" title="关闭">×</button>
+        </div>
+        <div class="modal-body">
+          <label class="field">
+            <span>检查清单（一行一条）</span>
+            <textarea id="complianceRulesInput" rows="10" placeholder="例如：&#10;合同金额必须同时有大写和小写&#10;必须明确违约责任条款&#10;不得出现「最终解释权归本公司」表述&#10;日期格式统一为 YYYY 年 MM 月 DD 日"></textarea>
+            <small class="field-tip">可以直接粘贴招标要求、审查要点或内部规范；AI 只报告能在正文中定位的问题。</small>
+          </label>
+        </div>
+        <div class="modal-footer">
+          <button id="complianceCancelBtn" class="ghost-btn compact-btn" type="button">取消</button>
+          <button id="complianceRunBtn" class="primary-btn compact-btn" type="button">开始检查</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 排版模板完整示例（放大查看） -->
+    <div id="formatTemplateSampleModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
+      <div class="modal-card format-template-sample-modal-card">
+        <div class="modal-header">
+          <h3 id="formatTemplateSampleModalTitle">排版示例</h3>
+          <button class="modal-close" id="formatTemplateSampleModalCloseBtn" type="button" title="关闭">×</button>
+        </div>
+        <div class="modal-body format-template-sample-modal-body">
+          <div id="formatTemplateSampleModalPage" class="format-template-sample-page"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 自定义排版模板编辑器（排版预览弹窗内二级弹窗） -->
+    <div id="formatTemplateEditorModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
+      <div class="modal-card format-template-editor-card">
+        <div class="modal-header">
+          <h3 id="formatTemplateEditorTitle">自定义排版模板</h3>
+          <button class="modal-close" id="formatTemplateEditorCloseBtn" type="button" title="关闭">×</button>
+        </div>
+        <div class="modal-body" id="formatTemplateEditorBody"></div>
+        <div class="modal-footer">
+          <button id="formatTemplateEditorCancelBtn" class="ghost-btn compact-btn" type="button">取消</button>
+          <button id="formatTemplateEditorSaveBtn" class="primary-btn compact-btn" type="button">保存</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="selectionPreviewModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="selectionPreviewTitle">
+      <div class="modal-card modal-card-wide selection-preview-card">
+        <div class="modal-header">
+          <div>
+            <h3 id="selectionPreviewTitle">选区预览</h3>
+            <p id="selectionPreviewMeta" class="modal-subtitle">预览修改前后内容，确认后替换当前选区。</p>
+          </div>
+          <button class="modal-close" id="selectionPreviewCloseBtn" type="button" title="关闭">×</button>
+        </div>
+        <div class="modal-body selection-preview-body">
+          <aside class="selection-preview-side">
+            <div id="selectionPreviewTranslateControls" class="selection-preview-controls hidden">
+              <label class="selection-preview-label" for="selectionPreviewLanguageSelect">目标语言</label>
+              <select id="selectionPreviewLanguageSelect" class="selection-preview-select">
+                <option value="简体中文">简体中文</option>
+                <option value="英文">英文</option>
+                <option value="日文">日文</option>
+                <option value="韩文">韩文</option>
+                <option value="法语">法语</option>
+                <option value="德语">德语</option>
+                <option value="西班牙语">西班牙语</option>
+                <option value="custom">自定义</option>
+              </select>
+              <input id="selectionPreviewCustomLanguageInput" class="selection-preview-custom-language hidden" type="text" placeholder="输入目标语言或风格，例如：繁体中文 / 商务英文" />
+            </div>
+            <label id="selectionPreviewInstructionLabel" class="selection-preview-label" for="selectionPreviewInstructionInput">要求</label>
+            <textarea id="selectionPreviewInstructionInput" class="selection-preview-instruction-input" rows="8" placeholder="可选。比如：更正式、保留专业术语、语气更自然。"></textarea>
+            <p id="selectionPreviewTip" class="selection-preview-tip">修改要求可以留空，AI 会按默认规则处理。</p>
+          </aside>
+          <section class="selection-preview-main">
+            <div id="selectionPreviewLoading" class="selection-preview-loading hidden">
+              <span class="chat-progress-spinner" aria-hidden="true"></span>
+              <span>正在生成预览…</span>
+            </div>
+            <div id="selectionPreviewCompare" class="selection-preview-compare">
+              <div class="selection-preview-panel original">
+                <div class="selection-preview-panel-title">原文</div>
+                <div id="selectionPreviewOriginal" class="selection-preview-rich"></div>
+              </div>
+              <div class="selection-preview-panel result">
+                <div class="selection-preview-panel-title">结果</div>
+                <div id="selectionPreviewResult" class="selection-preview-rich"></div>
+              </div>
+            </div>
+            <div id="selectionPreviewDiff" class="selection-preview-diff hidden"></div>
+          </section>
+        </div>
+        <div class="modal-footer selection-preview-footer">
+          <button id="selectionPreviewRegenerateBtn" class="ghost-btn compact-btn" type="button">重新生成</button>
+          <button id="selectionPreviewToggleDiffBtn" class="ghost-btn compact-btn" type="button">高亮对比</button>
+          <button id="selectionPreviewCopyBtn" class="ghost-btn compact-btn hidden" type="button">复制结果</button>
+          <button id="selectionPreviewCancelBtn" class="ghost-btn compact-btn" type="button">取消</button>
+          <button id="selectionPreviewReplaceBtn" class="primary-btn compact-btn" type="button">替换选区</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 预览日志查看弹窗（开发者工具）：把 localStorage 里的日志直接 dump 到一个 pre 里，
+         省去下载 txt 再用别的编辑器看的麻烦 -->
+    <div id="devLogViewerModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
+      <div class="modal-card modal-card-wide">
+        <div class="modal-header">
+          <h3>预览日志</h3>
+          <div style="flex:1"></div>
+          <span class="badge badge-muted" id="devLogViewerStats" style="margin-right:8px">—</span>
+          <button id="devLogViewerRefreshBtn" class="ghost-btn compact-btn" type="button" title="重新读取 localStorage">刷新</button>
+          <button id="devLogViewerCopyBtn" class="ghost-btn compact-btn" type="button" title="复制全部日志到剪贴板">复制</button>
+          <button id="devLogViewerScrollBottomBtn" class="ghost-btn compact-btn" type="button" title="跳到最新一条">↓ 最新</button>
+          <button class="modal-close" id="devLogViewerCloseBtn" type="button" title="关闭">×</button>
+        </div>
+        <div class="modal-body" style="padding:0;display:flex;flex-direction:column;min-height:0">
+          <div style="padding:8px 14px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <input id="devLogViewerFilter" type="text" placeholder="过滤（按 tag / where / 关键词，不区分大小写）" style="flex:1;min-width:200px" />
+            <label class="muted" style="font-size:11px;display:inline-flex;align-items:center;gap:4px">
+              <input id="devLogViewerWarnOnly" type="checkbox" /> 仅 WARN
+            </label>
+          </div>
+          <pre id="devLogViewerOutput" style="flex:1;margin:0;padding:10px 14px;overflow:auto;font:11px/1.5 Consolas,'Microsoft YaHei',monospace;background:#0f172a;color:#e2e8f0;white-space:pre-wrap;word-break:break-all;min-height:300px"></pre>
+        </div>
+      </div>
+    </div>
+
+    <div id="antdModalRoot"></div>
+
+    <script>
+      (function loadEntryScript() {
+        var dev = /^(?:localhost|127\.0\.0\.1|\[::1\])$/i.test(location.hostname);
+        document.write('<script src="./main.js' + (dev ? '?v=' + Date.now() : '') + '"><\/script>');
+      })();
+    </script>
+    <!-- LINGXI_GRAPHITE_TASKPANE_V1_JS_START -->
+    <script src="./js/lingxi-agent-references.js"></script>
+    <script src="./js/lingxi-graphite-taskpane.js"></script>
+    <!-- LINGXI_GRAPHITE_TASKPANE_V1_JS_END -->
+  </body>
+</html>

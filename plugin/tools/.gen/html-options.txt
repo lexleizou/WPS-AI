@@ -1,0 +1,46 @@
+              <optgroup label="高冲击 / 专业（bold pack）">
+                <option value="blue-professional">Blue Professional · 暖白底钴蓝点缀</option>
+                <option value="bold-poster">Bold Poster · 戏剧大字</option>
+                <option value="broadside">Broadside · 暗调火橙双语</option>
+                <option value="coral">Coral · Bebas 杂志</option>
+                <option value="neo-grid-bold">Neo-Grid Bold · 新野兽派</option>
+                <option value="raw-grid">Raw Grid · 新野兽派直接</option>
+                <option value="signal">Signal · 机构权威</option>
+                <option value="studio">Studio · 高压设计感</option>
+              </optgroup>
+              <optgroup label="编辑 / 出版（bold pack）">
+                <option value="biennale-yellow">Biennale Yellow · 暖纸明黄</option>
+                <option value="cobalt-grid">Cobalt Grid · 网格出版物</option>
+                <option value="editorial-forest">Editorial Forest · 安静编辑</option>
+                <option value="editorial-tri-tone">Editorial Tri-Tone · 时装编辑</option>
+                <option value="emerald-editorial">Emerald Editorial · 杂志封面式商业</option>
+                <option value="monochrome">Monochrome · Lora 学术</option>
+                <option value="soft-editorial">Soft Editorial · 暖纸文学</option>
+              </optgroup>
+              <optgroup label="暖系 / 手作（bold pack）">
+                <option value="capsule">Capsule · Y2K 粉彩</option>
+                <option value="daisy-days">Daisy Days · 粉彩暖友好</option>
+                <option value="long-table">Long Table · 温暖社交</option>
+                <option value="peoples-platform">People's Platform · 蓝橙红丝印</option>
+                <option value="pin-and-paper">Pin & Paper · 黄纸手作感</option>
+                <option value="playful">Playful · 独立友好</option>
+                <option value="retro-zine">Retro Zine · 绿色色块独立刊</option>
+                <option value="scatterbrain">Scatterbrain · 工作坊感</option>
+              </optgroup>
+              <optgroup label="优雅 / 沉静（bold pack）">
+                <option value="cartesian">Cartesian · 暖中性 Playfair</option>
+                <option value="grove">Grove · Playfair 古典</option>
+                <option value="mat">Mat · 中世纪现代</option>
+                <option value="pink-script">Pink Script · 夜场奢华</option>
+                <option value="vellum">Vellum · 学者</option>
+              </optgroup>
+              <optgroup label="科技 / 复古（bold pack）">
+                <option value="8-bit-orbit">8-Bit Orbit · CRT 像素霓虹</option>
+                <option value="retro-windows">Retro Windows · 像素游戏感</option>
+                <option value="sakura-chroma">Sakura Chroma · 彩带条码</option>
+              </optgroup>
+              <optgroup label="极简 / 装饰（bold pack）">
+                <option value="block-frame">Block Frame · 粗黑边糖果色块</option>
+                <option value="creative-mode">Creative Mode · 多彩自信</option>
+                <option value="stencil-tablet">Stencil & Tablet · 大地色考古</option>
+              </optgroup>

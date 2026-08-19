@@ -1,0 +1,7 @@
+LingxiAI / WPS-AI 1.4.7 user-local installation
+Installed from official package: https://llteac-file.oss-cn-hangzhou.aliyuncs.com/wps-ai/releases/1.4.7/lingxi-ai-1.4.7.pkg
+Package SHA256: e10000721a0ce3a25dc9ba824aaf5f215ed51d9f51ba1b81a8ea4577816c72e5
+GitHub tag: 1.4.7
+GitHub commit: 8e6cee8ae84d7b5f224c262f3286580cf1841013
+Verification: 206 common plugin source files matched the GitHub tag byte-for-byte.
+Installation mode: user-local, because the official PKG wrapper is unsigned.

@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>灵犀AI Add-in Entry</title>
+    <script>
+      (function installWpsCallbackCompatibility() {
+        var global = window;
+        function patchWpsApi(api) {
+          if (!api || (typeof api !== "object" && typeof api !== "function")) return api;
+          var names = ["WrapCallbackArg", "JS2Variant", "Variant2JS"];
+          for (var i = 0; i < names.length; i += 1) {
+            var name = names[i];
+            if (typeof api[name] === "function") continue;
+            try {
+              api[name] = function identityVariantBridge(value) {
+                return value;
+              };
+            } catch (e) {}
+          }
+          return api;
+        }
+
+        var fallback = patchWpsApi({});
+        if ("wps" in global) {
+          try {
+            if (global.wps == null) global.wps = fallback;
+            else patchWpsApi(global.wps);
+          } catch (e) {}
+          return;
+        }
+        try {
+          Object.defineProperty(global, "wps", {
+            configurable: true,
+            enumerable: true,
+            get: function getWps() {
+              return fallback;
+            },
+            set: function setWps(value) {
+              Object.defineProperty(global, "wps", {
+                configurable: true,
+                enumerable: true,
+                writable: true,
+                value: patchWpsApi(value)
+              });
+            }
+          });
+        } catch (e) {
+          global.wps = fallback;
+        }
+      })();
+
+      (function installEarlyRibbonCallbacks() {
+        var global = window;
+        global.__lingxiRibbonEarlyQueue = global.__lingxiRibbonEarlyQueue || [];
+        function tracePayload(value) {
+          if (value == null) return "";
+          if (typeof value === "string") return value;
+          try { return JSON.stringify(value); } catch (e) { return String(value); }
+        }
+        global.__lingxiTraceStatic = global.__lingxiTraceStatic || function traceStatic(event, data) {
+          try {
+            var url = new URL(location.href);
+            var basePath = url.pathname.replace(/\/[^/]*$/, "/");
+            var img = new Image();
+            img.src = basePath + "__lingxi_trace__.gif?event=" + encodeURIComponent(event || "")
+              + "&data=" + encodeURIComponent(tracePayload(data))
+              + "&ts=" + Date.now();
+          } catch (e) {}
+          try { console.log("[lingxi-ribbon-trace]", event, data); } catch (e) {}
+        };
+        global.__lingxiGetRibbonControlId = global.__lingxiGetRibbonControlId || function getRibbonControlId(control) {
+          if (typeof control === "string") return control;
+          if (!control) return "";
+          var keys = ["Id", "id", "ID", "Name", "name"];
+          for (var i = 0; i < keys.length; i += 1) {
+            try {
+              var value = control[keys[i]];
+              if (typeof value === "function") value = value.call(control);
+              if (value != null && value !== "") return String(value);
+            } catch (e) {}
+          }
+          return "";
+        };
+
+        global.__lingxiInvokeRibbonById = global.__lingxiInvokeRibbonById || function invokeRibbonById(id) {
+          global.__lingxiTraceStatic("early.invokeById", id);
+          if (typeof global.__lingxiOnAction === "function") {
+            return global.__lingxiOnAction(id);
+          }
+          if (id) {
+            global.__lingxiRibbonEarlyQueue.push({ type: "action", id: id, ts: Date.now() });
+          }
+          return true;
+        };
+
+        global.__lingxiGetRibbonImageById = global.__lingxiGetRibbonImageById || function getRibbonImageById(id) {
+          global.__lingxiTraceStatic("early.getImageById", id);
+          if (typeof global.__lingxiGetImage === "function") {
+            return global.__lingxiGetImage(id);
+          }
+          return "images/ai.png";
+        };
+
+        global.__lingxiBindRibbonAction = global.__lingxiBindRibbonAction || function bindRibbonAction(fnName, id) {
+          global.__lingxiTraceStatic("early.bindAction", { fnName: fnName, id: id });
+          window[fnName] = function generatedRibbonAction() {
+            global.__lingxiTraceStatic("early.generatedAction", { fnName: fnName, id: id });
+            return global.__lingxiInvokeRibbonById(id);
+          };
+        };
+
+        global.__lingxiBindRibbonImage = global.__lingxiBindRibbonImage || function bindRibbonImage(fnName, id) {
+          global.__lingxiTraceStatic("early.bindImage", { fnName: fnName, id: id });
+          window[fnName] = function generatedRibbonImage() {
+            global.__lingxiTraceStatic("early.generatedImage", { fnName: fnName, id: id });
+            return global.__lingxiGetRibbonImageById(id);
+          };
+        };
+
+        // ribbon 国际化：getLabel 回调按当前界面语言返回翻译（i18n 未加载 / 词典没有时回退中文）。
+        // 语言切换时 i18n.js 会调 __lingxiRibbonUI.Invalidate() 让 WPS 重新拉一遍 label。
+        global.__lingxiBindRibbonLabel = global.__lingxiBindRibbonLabel || function bindRibbonLabel(fnName, zhLabel) {
+          window[fnName] = function generatedRibbonLabel() {
+            try {
+              if (global.WpsAiI18n && typeof global.WpsAiI18n.t === "function") return global.WpsAiI18n.t(zhLabel);
+            } catch (e) {}
+            return zhLabel;
+          };
+        };
+
+        window.OnAddinLoad = function OnAddinLoad(ribbonUI) {
+          global.__lingxiTraceStatic("early.OnAddinLoad", !!ribbonUI);
+          global.__lingxiRibbonUI = ribbonUI;
+          if (typeof global.__lingxiOnAddinLoad === "function") {
+            return global.__lingxiOnAddinLoad(ribbonUI);
+          }
+          return true;
+        };
+
+        window.OnAction = function OnAction(control) {
+          var id = global.__lingxiGetRibbonControlId(control);
+          global.__lingxiTraceStatic("early.OnAction", id);
+          if (typeof global.__lingxiOnAction === "function") {
+            return global.__lingxiOnAction(control);
+          }
+          if (id) {
+            global.__lingxiRibbonEarlyQueue.push({ type: "action", id: id, ts: Date.now() });
+          }
+          return true;
+        };
+
+        window.GetImage = function GetImage(control) {
+          global.__lingxiTraceStatic("early.GetImage", global.__lingxiGetRibbonControlId(control));
+          if (typeof global.__lingxiGetImage === "function") {
+            return global.__lingxiGetImage(control);
+          }
+          return "images/ai.png";
+        };
+
+        window.OnGetEnabled = function OnGetEnabled(control) {
+          var id = global.__lingxiGetRibbonControlId(control);
+          global.__lingxiTraceStatic("early.OnGetEnabled", id);
+          if (typeof global.__lingxiOnGetEnabled === "function") {
+            return global.__lingxiOnGetEnabled(control);
+          }
+          return true;
+        };
+
+        window.OnGetVisible = function OnGetVisible(control) {
+          var id = global.__lingxiGetRibbonControlId(control);
+          global.__lingxiTraceStatic("early.OnGetVisible", id);
+          if (typeof global.__lingxiOnGetVisible === "function") {
+            return global.__lingxiOnGetVisible(control);
+          }
+          return true;
+        };
+
+        global.__lingxiTraceStatic("early.shell.ready", location.pathname);
+      })();
+
+      (function loadEntryScript() {
+        var dev = /^(?:localhost|127\.0\.0\.1|\[::1\])$/i.test(location.hostname);
+        var cacheBust = dev ? '?v=' + Date.now() : '';
+        document.write('<script src="./js/ribbon-callbacks.generated.js' + cacheBust + '"><\/script>');
+        document.write('<script src="./main.js' + cacheBust + '"><\/script>');
+      })();
+    </script>
+  </head>
+  <body></body>
+</html>
+<!-- 参考 wpsjs_demo：index.html 是 WPS 加载项入口文件，WPS 启动加载项时会先加载此文件。 -->

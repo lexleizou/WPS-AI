@@ -1,0 +1,8 @@
+js/vendor/
+js/addon-SDK-*.js
+runtime/
+node_modules/
+tools/.gen/
+package-lock.json
+dist/
+coverage/

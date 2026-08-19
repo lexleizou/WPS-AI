@@ -1,0 +1,34 @@
+{
+  "name": "lingxi-ai",
+  "addonType": "wps",
+  "version": "1.4.7",
+  "description": "灵犀AI WPS Writer add-in, using ChatGPT OAuth and OpenAI Responses API.",
+  "main": "index.html",
+  "scripts": {
+    "proxy": "node --experimental-sqlite tools/proxy-server.js",
+    "debug": "wpsjs debug",
+    "dev": "node tools/gen-ribbon.js && node tools/dev.js",
+    "dev:wps": "node tools/set-addon-type.js wps && npm run dev",
+    "dev:et": "node tools/set-addon-type.js et && npm run dev",
+    "dev:wpp": "node tools/set-addon-type.js wpp && npm run dev",
+    "dev:pdf": "node tools/set-addon-type.js pdf && npm run dev",
+    "gen-ribbon": "node tools/gen-ribbon.js",
+    "install:mac-publish": "node tools/install-mac-publish.js",
+    "lint:eslint": "eslint main.js js tools test",
+    "lint": "npm run lint:eslint",
+    "scan:semgrep": "node tools/run-semgrep.js",
+    "scan:semgrep:ci": "node tools/run-semgrep.js --error",
+    "check:static": "npm run lint:eslint && npm run scan:semgrep:ci",
+    "build": "node tools/gen-ribbon.js && wpsjs build",
+    "publish": "node tools/gen-ribbon.js && wpsjs publish"
+  },
+  "devDependencies": {
+    "eslint": "^10.6.0",
+    "wps-jsapi": "latest"
+  },
+  "dependencies": {
+    "ant-design-vue": "^4.2.6",
+    "pdfjs-dist": "^3.11.174",
+    "vue": "^3.5.17"
+  }
+}
