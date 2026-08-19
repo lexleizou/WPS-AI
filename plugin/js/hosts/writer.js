@@ -1875,6 +1875,162 @@
     return { scope: opts.scope || "selection", applied: failures.length === 0, failures };
   }
 
+  // ---- 制表位（TabStops）：目录页码对齐、悬挂缩进对齐等都靠它 ----
+  // Word 枚举：wdAlignTabLeft=0 Center=1 Right=2 Decimal=3 Bar=4；
+  // wdTabLeaderSpaces=0 Dots=1 Dashes=2 Lines=3 Heavy=4 MiddleDot=5。单位都是磅。
+  const WD_TAB_ALIGN = { left: 0, center: 1, right: 2, decimal: 3, bar: 4 };
+  const WD_TAB_ALIGN_NAME = ["left", "center", "right", "decimal", "bar"];
+  const WD_TAB_LEADER = { none: 0, spaces: 0, dots: 1, dashes: 2, lines: 3, heavy: 4, middleDot: 5 };
+  const WD_TAB_LEADER_NAME = ["spaces", "dots", "dashes", "lines", "heavy", "middleDot"];
+
+  function readTabStopsOf(pf) {
+    const tabs = [];
+    const ts = pf && pf.TabStops;
+    const count = Number(ts && ts.Count) || 0;
+    for (let i = 1; i <= count; i += 1) {
+      try {
+        const t = ts.Item(i);
+        tabs.push({
+          position: Number(t.Position),
+          alignment: WD_TAB_ALIGN_NAME[Number(t.Alignment)] || String(t.Alignment),
+          leader: WD_TAB_LEADER_NAME[Number(t.Leader)] || String(t.Leader)
+        });
+      } catch (e) {}
+    }
+    return tabs;
+  }
+
+  // 给任意 ParagraphFormat 重设制表位；返回 { applied, tabs, failures }，写入后读回校验
+  function writeTabStopsTo(pf, tabs, failures, labelPrefix) {
+    const ts = pf.TabStops;
+    try { ts.ClearAll(); } catch (e) {}
+    (tabs || []).forEach((tab, idx) => {
+      const field = `${labelPrefix || "tab"}[${idx}]`;
+      const pos = numOr(tab && tab.position);
+      if (pos == null) { failures.push({ field, error: "position 缺失或不是数字" }); return; }
+      const align = WD_TAB_ALIGN[(tab && tab.alignment) || "left"];
+      const leader = WD_TAB_LEADER[(tab && tab.leader) || "none"];
+      try {
+        ts.Add(pos, align == null ? 0 : align, leader == null ? 0 : leader);
+      } catch (e) {
+        failures.push({ field, expected: tab, error: String((e && e.message) || e) });
+      }
+    });
+    const actual = readTabStopsOf(pf);
+    if (actual.length !== (tabs || []).length) {
+      failures.push({ field: "tabStops", expected: (tabs || []).length, actual: actual.length, error: "写入后制表位数量不符" });
+    }
+    return actual;
+  }
+
+  async function getTabStops() {
+    const sel = await getSelection();
+    if (!sel) throw new Error("未获取到选区。");
+    return { scope: "selection", tabs: readTabStopsOf(sel.ParagraphFormat) };
+  }
+
+  async function setTabStops(opts = {}) {
+    const sel = await getSelection();
+    if (!sel) throw new Error("未获取到选区。");
+    const failures = [];
+    const tabs = writeTabStopsTo(sel.ParagraphFormat, opts.tabs, failures);
+    return { scope: "selection", applied: failures.length === 0, tabs, failures };
+  }
+
+  // 按内置 id 或名称解析样式；TOC 等内置样式优先用 id（wdStyleTOC1=-20 … TOC9=-28），名称兜底
+  function resolveStyle(d, opts) {
+    const styles = d.Styles;
+    if (numOr(opts.builtinId) != null) {
+      try { const s = styles.Item(Number(opts.builtinId)); if (s) return s; } catch (e) {}
+    }
+    const names = Array.isArray(opts.nameCandidates) ? opts.nameCandidates : [opts.name];
+    for (const name of names) {
+      if (!name) continue;
+      try { const s = styles.Item(String(name)); if (s) return s; } catch (e) {}
+    }
+    return null;
+  }
+
+  async function modifyStyle(opts = {}) {
+    const d = await ensureDocument();
+    const style = resolveStyle(d, opts);
+    if (!style) throw new Error(`找不到样式：${opts.name || opts.builtinId}。可用 wps_list_styles 查看现有样式名。`);
+    const failures = [];
+    const pf = style.ParagraphFormat;
+    const para = opts.paragraph || {};
+    const applyProp = (obj, field, value) => {
+      try {
+        obj[field] = value;
+        const actual = Number(obj[field]);
+        if (actual !== Number(value)) failures.push({ field, expected: value, actual });
+      } catch (e) {
+        failures.push({ field, expected: value, error: String((e && e.message) || e) });
+      }
+    };
+    if (para.alignment && WD_ALIGN[para.alignment] != null) applyProp(pf, "Alignment", WD_ALIGN[para.alignment]);
+    if (numOr(para.leftIndent) != null) applyProp(pf, "LeftIndent", para.leftIndent);
+    if (numOr(para.rightIndent) != null) applyProp(pf, "RightIndent", para.rightIndent);
+    if (numOr(para.firstLineIndent) != null) applyProp(pf, "FirstLineIndent", para.firstLineIndent);
+    if (numOr(para.spaceBefore) != null) applyProp(pf, "SpaceBefore", para.spaceBefore);
+    if (numOr(para.spaceAfter) != null) applyProp(pf, "SpaceAfter", para.spaceAfter);
+    if (numOr(para.lineSpacing) != null) applyProp(pf, "LineSpacing", para.lineSpacing);
+    const font = opts.font || {};
+    if (font.name) {
+      try {
+        const f = style.Font;
+        // 中文字体显示由 NameFarEast 控制，四键同写
+        ["Name", "NameFarEast", "NameAscii", "NameOther"].forEach((key) => { try { f[key] = String(font.name); } catch (e) {} });
+        if (String(f.NameFarEast) !== String(font.name)) failures.push({ field: "font.name", expected: font.name, actual: String(f.NameFarEast) });
+      } catch (e) {
+        failures.push({ field: "font.name", expected: font.name, error: String((e && e.message) || e) });
+      }
+    }
+    if (numOr(font.size) != null) applyProp(style.Font, "Size", font.size);
+    if (font.bold != null) applyProp(style.Font, "Bold", font.bold ? -1 : 0);
+    let tabs;
+    if (Array.isArray(opts.tabs)) {
+      tabs = writeTabStopsTo(pf, opts.tabs, failures, "tab");
+    }
+    return { style: String(style.NameLocal || style.Name || opts.name || opts.builtinId), applied: failures.length === 0, tabs, failures };
+  }
+
+  // 目录页码对齐一键修复：改「目录 1-9」样式的右侧制表位（点前导符），改样式才扛得住目录刷新
+  async function fixTocPageAlignment(opts = {}) {
+    const d = await ensureDocument();
+    const setup = d.Sections.Item(1).PageSetup;
+    const contentWidth = Number(setup.PageWidth) - Number(setup.LeftMargin) - Number(setup.RightMargin);
+    const leader = WD_TAB_LEADER[opts.leader || "dots"];
+    const indentStep = numOr(opts.indentStep); // 不传则不动各级缩进
+    const levels = [];
+    for (let level = 1; level <= 9; level += 1) {
+      const style = resolveStyle(d, {
+        builtinId: -20 - (level - 1), // wdStyleTOC1=-20 … wdStyleTOC9=-28
+        nameCandidates: [`目录 ${level}`, `目录${level}`, `TOC ${level}`, `toc ${level}`]
+      });
+      if (!style) continue; // 该级目录样式不存在/未使用，跳过
+      const failures = [];
+      const pf = style.ParagraphFormat;
+      const actual = writeTabStopsTo(pf, [{ position: contentWidth, alignment: "right", leader: opts.leader || "dots" }], failures, `toc${level}`);
+      if (indentStep != null) {
+        try {
+          pf.LeftIndent = indentStep * (level - 1);
+          if (Number(pf.LeftIndent) !== indentStep * (level - 1)) failures.push({ field: "leftIndent", expected: indentStep * (level - 1), actual: Number(pf.LeftIndent) });
+        } catch (e) {
+          failures.push({ field: "leftIndent", error: String((e && e.message) || e) });
+        }
+      }
+      levels.push({
+        level,
+        style: String(style.NameLocal || style.Name || `TOC${level}`),
+        applied: failures.length === 0,
+        tabs: actual,
+        failures
+      });
+    }
+    if (!levels.length) throw new Error("文档里没有目录样式（目录 1-9 / TOC 1-9），请先插入目录。");
+    return { contentWidth, leader: opts.leader || "dots", levels, applied: levels.every((l) => l.applied) };
+  }
+
   async function setHeaderFooter(opts = {}) {
     const d = await ensureDocument();
     const section = d.Sections.Item(1);
@@ -2141,6 +2297,10 @@
     manageRevisions,             // 接受/拒绝全部修订 + 开关修订
     exportToPdf,                 // 导出为 PDF
     formatParagraph,             // 段落格式（对齐/缩进/行距/段前段后）
+    getTabStops,                 // 读取选区制表位
+    setTabStops,                 // 重设选区制表位（读回校验）
+    modifyStyle,                 // 修改样式（段落/字体/制表位，改样式才扛得住域刷新）
+    fixTocPageAlignment,         // 目录页码右对齐一键修复（目录 1-9 样式统一点前导符右制表位）
     setHeaderFooter,             // 页眉页脚 + 页码
     pageSetup,                   // 页面设置（纸张/边距/横竖/分栏）
     insertFootnote,              // 脚注/尾注

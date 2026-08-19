@@ -226,6 +226,86 @@
   });
 
   registry.registerTool({
+    name: "wps_get_tab_stops",
+    hosts: ["wps"],
+    description: "读取当前选区的制表位列表（位置磅/对齐/前导符）。排查目录页码不对齐、悬挂缩进错位时先读它。",
+    parameters: { type: "object", properties: {} },
+    handler: async () => {
+      const fn = writer().getTabStops;
+      if (typeof fn !== "function") throw new Error("当前宿主不支持读取制表位。");
+      return await fn.call(writer());
+    }
+  });
+
+  registry.registerTool({
+    name: "wps_set_tab_stops",
+    hosts: ["wps"],
+    description: "重设当前选区的制表位（会先清空再逐个写入，写后读回校验）。tabs 数组每项：position 位置(磅，从左边距起算)、alignment(left/center/right/decimal/bar)、leader(none/dots/dashes/lines)。目录页码右对齐 = 一个 position=版心宽 的 right + dots 制表位。",
+    parameters: {
+      type: "object",
+      required: ["tabs"],
+      properties: {
+        tabs: {
+          type: "array",
+          items: {
+            type: "object",
+            required: ["position"],
+            properties: {
+              position: { type: "number", description: "磅，从左边距起算" },
+              alignment: { type: "string", enum: ["left", "center", "right", "decimal", "bar"] },
+              leader: { type: "string", enum: ["none", "dots", "dashes", "lines", "heavy", "middleDot"] }
+            }
+          }
+        }
+      }
+    },
+    handler: async (opts = {}) => {
+      const fn = writer().setTabStops;
+      if (typeof fn !== "function") throw new Error("当前宿主不支持设置制表位。");
+      return await fn.call(writer(), opts);
+    }
+  });
+
+  registry.registerTool({
+    name: "wps_modify_style",
+    hosts: ["wps"],
+    description: "修改一个段落样式的定义（改样式才扛得住目录/域刷新；直接刷 TOC 段落格式会在刷新后丢失）。name 样式名（如「目录 1」「标题 1」），或 builtinId 内置 id（目录1-9 = -20..-28）。paragraph 支持 alignment/leftIndent/rightIndent/firstLineIndent/spaceBefore/spaceAfter/lineSpacing；font 支持 name/size/bold；tabs 数组同 wps_set_tab_stops。",
+    parameters: {
+      type: "object",
+      properties: {
+        name: { type: "string" },
+        builtinId: { type: "number", description: "内置样式 id，目录1-9=-20..-28，标题1-4=-2..-5" },
+        paragraph: { type: "object", properties: { alignment: { type: "string" }, leftIndent: { type: "number" }, rightIndent: { type: "number" }, firstLineIndent: { type: "number" }, spaceBefore: { type: "number" }, spaceAfter: { type: "number" }, lineSpacing: { type: "number" } } },
+        font: { type: "object", properties: { name: { type: "string" }, size: { type: "number" }, bold: { type: "boolean" } } },
+        tabs: { type: "array", items: { type: "object", required: ["position"], properties: { position: { type: "number" }, alignment: { type: "string" }, leader: { type: "string" } } } }
+      }
+    },
+    handler: async (opts = {}) => {
+      const fn = writer().modifyStyle;
+      if (typeof fn !== "function") throw new Error("当前宿主不支持修改样式。");
+      return await fn.call(writer(), opts);
+    }
+  });
+
+  registry.registerTool({
+    name: "wps_fix_toc_alignment",
+    hosts: ["wps"],
+    description: "目录页码右对齐一键修复（推荐）：把「目录 1-9」样式的制表位统一为 版心宽 处的 right+dots 右制表位，让各级目录页码严格纵向对齐。改的是样式，刷新目录后不丢。leader 前导符默认 dots；indentStep 可选（磅，传入则每级目录左缩进=(级别-1)*indentStep，不传不动缩进）。修复后如有需要再调 wps_update_toc_fields 刷新。",
+    parameters: {
+      type: "object",
+      properties: {
+        leader: { type: "string", enum: ["dots", "dashes", "lines", "none"] },
+        indentStep: { type: "number", description: "可选。每级目录的缩进步长（磅）" }
+      }
+    },
+    handler: async (opts = {}) => {
+      const fn = writer().fixTocPageAlignment;
+      if (typeof fn !== "function") throw new Error("当前宿主不支持目录对齐修复。");
+      return await fn.call(writer(), opts);
+    }
+  });
+
+  registry.registerTool({
     name: "wps_set_header_footer",
     hosts: ["wps"],
     description: "设置页眉或页脚。target=header/footer。text=文字内容；pageNumber=true 插入页码；alignment 对齐(left/center/right)。",
