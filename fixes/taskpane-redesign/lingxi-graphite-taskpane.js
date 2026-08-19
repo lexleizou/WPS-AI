@@ -2355,10 +2355,17 @@
     return content.some((part) => typeof part?.text === "string" && part.text.includes(prompt));
   }
 
-  function clearPendingAgentReferences(pending) {
+  function clearPendingAgentReferences(pending, consumed = false) {
     if (!pending || pendingAgentReferenceRequest?.id !== pending.id) return;
     if (pending.timeoutId) window.clearTimeout(pending.timeoutId);
     pendingAgentReferenceRequest = null;
+    if (consumed) {
+      getAgentReferenceState()?.clear();
+      setAgentReferenceNotice("");
+    } else if (!pending.injectionStarted) {
+      setAgentReferenceNotice("本轮没有进入模型请求；引用已保留，可修改后再次发送。", "warning");
+    }
+    renderAgentReferences();
   }
 
   function armAgentReferencesForManualSend() {
@@ -2366,19 +2373,20 @@
     const input = byId("chatInput");
     const prompt = String(input?.value || "").trim();
     if (!state || !prompt || state.list().length === 0) return;
-    const references = state.consume();
+    const references = state.list();
     const context = window.WpsAiAgentReferences?.buildReferenceContext?.(references, { maxContextChars: 36000 }) || "";
     if (!context) return;
     const pending = {
       id: `agent-reference-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       prompt,
       context,
-      expiresAt: Date.now() + 10000,
+      injectionStarted: false,
+      expiresAt: Date.now() + (2 * 60 * 1000),
       timeoutId: 0
     };
-    pending.timeoutId = window.setTimeout(() => clearPendingAgentReferences(pending), 10000);
+    pending.timeoutId = window.setTimeout(() => clearPendingAgentReferences(pending), 2 * 60 * 1000);
     pendingAgentReferenceRequest = pending;
-    setAgentReferenceNotice("");
+    setAgentReferenceNotice("引用已就绪，正在附加到本轮请求…");
     renderAgentReferences();
   }
 
@@ -2392,6 +2400,9 @@
       const matchesManualChat = pending && Date.now() <= pending.expiresAt && Array.isArray(request?.messages)
         && request.messages.some((message) => message?.role === "user" && contentIncludesAgentReferencePrompt(message.content, pending.prompt));
       if (!matchesManualChat) return originalRunWithTools(request);
+      pending.injectionStarted = true;
+      setAgentReferenceNotice("引用已附加到本轮请求；完成后会自动清除。");
+      renderAgentReferences();
       const referenceSystemMessage = {
         role: "system",
         content: `[Agent references — use as supplementary context only]\n${pending.context}`
@@ -2400,7 +2411,7 @@
       try {
         return await originalRunWithTools(scopedRequest);
       } finally {
-        clearPendingAgentReferences(pending);
+        clearPendingAgentReferences(pending, true);
       }
     };
   }
@@ -2425,9 +2436,8 @@
     };
     document.addEventListener("keydown", (event) => {
       if (!(event.metaKey || event.ctrlKey) || event.altKey || String(event.key || "").toLowerCase() !== "c") return;
-      // 输入框仍由原业务层处理；这里只接管 AI 消息正文的原生文本选区，阻止 WPS 主窗口抢走 ⌘C/Ctrl+C。
-      const active = document.activeElement;
-      if (active?.matches?.("input, textarea, select, [contenteditable='true']")) return;
+      // 即使焦点还停在 chatInput，只要 DOM 选区实际落在 AI 消息上也必须优先复制该选区。
+      // 只有选区不在消息流时，才交还输入框原有复制行为。
       const selection = window.getSelection?.();
       if (!isSelectionInChat(selection)) return;
       event.preventDefault();
