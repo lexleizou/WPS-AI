@@ -107,6 +107,7 @@
     "js/markdown-render.js",
     "js/mindmap.js", // 文档脑图：markdown 大纲 → echarts tree 数据
     "js/hosts/writer.js",
+    "js/hosts/writer-paragraph-cell.js", // LINGXI_WRITER_PARAGRAPH_CELL_TOOLS_V1_HOST
     "js/hosts/writer-section-break.js", // LINGXI_WRITER_SECTION_BREAK_REMOVAL_V1_HOST
     "js/hosts/writer-inspector.js", // LINGXI_WRITER_INSPECTOR_PHASE1_V1_HOST
     "js/hosts/writer-format-guard.js", // LINGXI_WRITER_FORMAT_GUARD_V1_HOST
@@ -169,6 +170,7 @@
     "js/tools/todos.js",
     "js/tools/spreadsheet.js",
     "js/tools/writer.js",
+    "js/tools/writer-paragraph-cell.js", // LINGXI_WRITER_PARAGRAPH_CELL_TOOLS_V1_TOOLS
     "js/tools/writer-section-break.js", // LINGXI_WRITER_SECTION_BREAK_REMOVAL_V1_TOOLS
     "js/tools/writer-inspector.js", // LINGXI_WRITER_INSPECTOR_PHASE1_V1_TOOLS
     "js/tools/writer-format-guard.js", // LINGXI_WRITER_FORMAT_GUARD_V1_TOOLS
