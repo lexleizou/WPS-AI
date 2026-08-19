@@ -1203,7 +1203,11 @@
   }
 
   function formatTokens(value) {
-    return Math.max(0, Math.round(Number(value) || 0)).toLocaleString("zh-CN");
+    const tokens = Math.max(0, Math.round(Number(value) || 0));
+    if (tokens < 1000) return String(tokens);
+    if (tokens < 1000000) return `${Math.round(tokens / 1000)}k`;
+    const millions = tokens / 1000000;
+    return `${Number.isInteger(millions) ? millions : Math.round(millions * 10) / 10}M`;
   }
 
   function installContextUsage(ring) {
