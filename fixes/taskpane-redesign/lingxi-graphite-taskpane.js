@@ -648,7 +648,7 @@
       const viewChanging = ["reveal_location", "wps_goto_bookmark", "wps_set_view"].includes(name);
       if (mutating && strictReadOnly) {
         // 覆盖 wps_find_replace 等全局写入：本轮用户明确“先不要改”，模型无权自行升级为修改。
-        return { ok: false, error: "STRICT_READ_ONLY_REQUIRED：用户明确要求本轮只检查/总结，禁止调用任何会写入当前 WPS 文档的工具（包括 wps_find_replace）。等待下一条用户手动确认后才能修改。" };
+        return { ok: false, error: "STRICT_READ_ONLY_REQUIRED：用户明确要求本轮只检查/总结，所有写入通道均已关闭。禁止重试任何写入、格式或选区工具——重试必然失败且浪费轮次；不要探测闸门是否解除。请改用只读工具（wps_read_* / wps_get_* / wps_audit_*）完成检查并输出总结，修改需等待用户下一条消息明确确认。" };
       }
       if (mutating && preConfirmation) {
         return { ok: false, error: "PREVIEW_GATE_REQUIRED：此任务必须先建立文档地图、在对话中给出修改摘要预览，并等待用户明确确认；当前禁止写入 WPS。" };
@@ -689,6 +689,12 @@
     send.dataset.lingxiStrictReadOnlyBound = "1";
     // Capture 阶段先记录用户的原始意图；随后业务 send handler 才会清空输入框。
     send.addEventListener("click", () => armStrictReadOnlyGate(input), true);
+    // Enter 发送同样要先布防（与发送按钮点击同路径）；IME 选词的 Enter 除外。
+    document.addEventListener("keydown", (ev) => {
+      if (ev.key !== "Enter" || ev.shiftKey || ev.isComposing) return;
+      if (!input || (ev.target !== input && !input.contains(ev.target))) return;
+      armStrictReadOnlyGate(input);
+    }, true);
 
     const client = window.WpsAiOpenAI;
     if (client?.runWithTools && !client.__lingxiStrictReadOnlyBridgeV1) {
@@ -698,11 +704,18 @@
         const strict = strictReadOnlyGate.active && Date.now() <= strictReadOnlyGate.expiresAt
           && strictReadOnlyPromptMatches(request?.messages, strictReadOnlyGate.prompt);
         if (!strict) return originalRunWithTools(request);
+        // 关键：只读轮直接从工具清单中移除写入工具，模型看不到就不会反复试探。
+        const tools = Array.isArray(request?.tools)
+          ? request.tools.filter((tool) => {
+              const toolName = String(tool?.name || tool?.function?.name || "");
+              return !(toolName.startsWith("wps_") && window.WpsAiHistory?.isMutatingTool?.(toolName));
+            })
+          : request?.tools;
         const guardMessage = {
           role: "system",
-          content: "【严格只读边界】用户明确要求本轮仅检查、读取或总结，绝不修改当前 WPS 文档。不得调用任何写入工具（包括 wps_find_replace）；不得在本轮自行转为修改。只输出发现、证据锚点和建议，等待下一条用户手动确认。"
+          content: "【严格只读边界】用户明确要求本轮仅检查、读取或总结，绝不修改当前 WPS 文档。本轮所有写入工具已从可用工具中移除，不存在也不要尝试调用任何写入、格式或选区工具（包括 wps_find_replace）；重试必然失败，不要探测闸门是否解除。只能使用只读工具完成检查，输出发现、证据锚点和建议，等待下一条用户手动确认。"
         };
-        return originalRunWithTools(Object.assign({}, request, { messages: [guardMessage, ...request.messages] }));
+        return originalRunWithTools(Object.assign({}, request, { messages: [guardMessage, ...request.messages], tools }));
       };
     }
 

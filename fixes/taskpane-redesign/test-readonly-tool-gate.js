@@ -18,3 +18,8 @@ assert.equal(detect("确认按预览修改"), false);
 assert.ok(source.includes("STRICT_READ_ONLY_REQUIRED"), "strict tool error must exist");
 assert.ok(source.includes("wps_find_replace"), "tool gate test must name find/replace coverage");
 console.log("PASS strict read-only tool gate");
+assert(source.includes("request.tools.filter"), "strict read-only turn must remove write tools from the advertised tool list");
+assert(source.includes("isMutatingTool?.(toolName)"), "tool filter must use the mutating-tool classifier");
+assert(source.includes("重试必然失败"), "blocked error must explicitly forbid retries");
+assert(/keydown[\s\S]{0,300}armStrictReadOnlyGate/.test(source), "gate must also arm on Enter-to-send");
+console.log("PASS strict read-only tool filtering and Enter arming");
