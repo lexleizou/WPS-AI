@@ -528,7 +528,7 @@
     strictReadOnlyGate.timeoutId = window.setTimeout(clearStrictReadOnlyGate, 30 * 60 * 1000);
     renderWritePreviewGate();
   }
-  const DOCUMENT_WIDE_REVIEW_EDIT = /(?:URS|需求规格|用户需求|当前文档|整个文档|整份文档|全文|通篇|整篇).{0,120}(?:检查|审查|核对|复核).{0,180}(?:修改|修复|改写|润色|统一|补充|删除)|(?:检查|审查|核对|复核).{0,180}(?:全文|通篇|整篇|当前文档|整个文档|整份文档).{0,180}(?:修改|修复|改写|润色|统一|补充|删除)/i;
+  const DOCUMENT_WIDE_REVIEW_EDIT = /(?:URS|需求规格|用户需求|当前文档|整个文档|整份文档|全文|通篇|整篇).{0,120}(?:检查|审查|核对|复核).{0,180}(?:修改|修复|改写|润色|统一|补充|删除)|(?:检查|审查|核对|复核).{0,180}(?:全文|通篇|整篇|当前文档|整个文档|整份文档).{0,180}(?:修改|修复|改写|润色|统一|补充|删除)|(?:检查|审查|核对|复核|扫描).{0,240}(?:URS|需求规格|当前打开的\S{0,12}文档|文档|全文|通篇|整篇).{0,240}(?:修正|修改|修复|统一|删除)/i;
   const LONG_REWRITE_ROUTE_TERMS = [[/全文|通篇|整篇|全篇|逐段|各章节|整个文档/g, "当前文档"], [/改写|润色|扩写|精简|缩写|重写|调整结构|重新组织|统一语气|统一术语/g, "处理"]];
 
   function escapedStagingRequest(request) {
@@ -573,7 +573,7 @@
     const send = byId("chatSendBtn");
     if (!input || !send || send.dataset.lingxiPreviewGateBound === "1") return;
     send.dataset.lingxiPreviewGateBound = "1";
-    send.addEventListener("click", () => {
+    const armGate = () => {
       const typed = String(input.value || "").trim();
       if (!typed) return;
       if (writePreviewGate.phase === "awaiting_confirmation" && WRITE_PREVIEW_CONFIRM.test(typed)) {
@@ -606,6 +606,13 @@
       ].join("\n");
       input.dispatchEvent(new Event("input", { bubbles: true }));
       renderWritePreviewGate();
+    };
+    send.addEventListener("click", armGate, true);
+    // Enter 发送同样要先布防/改写，否则原文绕过门禁直接命中 app.js 的长文改写路由。
+    document.addEventListener("keydown", (ev) => {
+      if (ev.key !== "Enter" || ev.shiftKey || ev.isComposing) return;
+      if (ev.target !== input && !input.contains(ev.target)) return;
+      armGate();
     }, true);
     const stop = byId("chatStopBtn");
     if (!stop || stop.dataset.lingxiPreviewGateBusyBound === "1") return;
@@ -3180,6 +3187,23 @@
     return bar;
   }
 
+  // 硬拦截：门禁管理期间（只读轮 / 预览确认流程），禁止 app.js 的整篇分节改写流水线。
+  // 该流水线绕过 registry.execute 的工具层门禁，只能从入口 run() 拦截。
+  function installLongRewriteGuard() {
+    const module = window.WpsAiLongRewrite;
+    if (!module || typeof module.run !== "function" || module.__lingxiLongRewriteGuardV1) return;
+    try { Object.defineProperty(module, "__lingxiLongRewriteGuardV1", { value: true }); } catch (error) { return; }
+    const original = module.run.bind(module);
+    module.run = async (...args) => {
+      const gated = strictReadOnlyGate.active || writePreviewGate.phase !== "idle";
+      if (gated) {
+        showCopyHint("已拦截整篇改写：本轮按预览确认的最小修改执行，不走全文重写。", true);
+        return { blocked: true, reason: "preview_gate_active" };
+      }
+      return original(...args);
+    };
+  }
+
   function enhanceRichInputSurfaces() {
     const input = byId("chatInput");
     if (input) attachRichSurface(input);
@@ -3226,6 +3250,7 @@
     installAgentReferenceSendBridge();
     installChatCopyShortcut();
     installMacPasteIsolation();
+    installLongRewriteGuard();
     enhanceRichInputSurfaces();
     enhanceAccessibility();
     installLiteLlmSettingsEnhancements();

@@ -23,3 +23,12 @@ assert(source.includes("isMutatingTool?.(toolName)"), "tool filter must use the 
 assert(source.includes("重试必然失败"), "blocked error must explicitly forbid retries");
 assert(/keydown[\s\S]{0,300}armStrictReadOnlyGate/.test(source), "gate must also arm on Enter-to-send");
 console.log("PASS strict read-only tool filtering and Enter arming");
+const gateMatch = source.match(/const DOCUMENT_WIDE_REVIEW_EDIT = [^;]+;/);
+assert.ok(gateMatch, "doc-wide gate regex missing");
+const gateRe = eval(gateMatch[0].replace("const DOCUMENT_WIDE_REVIEW_EDIT = ", "").replace(/;$/, ""));
+const v2 = fs.readFileSync(`${process.env.HOME}/.proma/agent-workspaces/macos/db4117d1-d7fe-4e9a-a1f4-7b874f461b78/prompt-drafts/桓科-URS-检查-v2.md`, "utf8");
+assert.ok(gateRe.test(v2), "v2 prompt must be caught by the doc-wide preview gate");
+assert.ok(source.includes("installLongRewriteGuard"), "long-rewrite hard guard missing");
+assert.ok(source.includes("__lingxiLongRewriteGuardV1"), "long-rewrite guard marker missing");
+assert.ok(/keydown[\s\S]{0,300}armGate\(\)/.test(source), "preview gate must also arm on Enter-to-send");
+console.log("PASS doc-wide gate v2 coverage and long-rewrite guard");
