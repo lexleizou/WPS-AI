@@ -691,12 +691,27 @@
   registry.registerTool({
     name: "wps_replace_selection",
     hosts: ["wps"],
-    description: "用结构化 blocks 替换当前选区（Word 原生格式）；不要传 markdown。简单纯文本可用 text。全文 AI 排版请走排版预览弹窗。",
+    description: "用结构化 blocks 替换当前选区（Word 原生格式）；不要传 markdown。简单纯文本可用 text。全文 AI 排版请走排版预览弹窗。强烈建议传 expectedSelectionText（预期选区文本的开头 20-30 字）做防错位核验——选区位置来自上一步 select，若中间发生过插入/删除，选区可能已不是你想要的位置。",
     parameters: {
       type: "object",
-      properties: { blocks: BLOCK_SCHEMA, text: { type: "string", description: "纯文本替换" } }
+      properties: {
+        blocks: BLOCK_SCHEMA,
+        text: { type: "string", description: "纯文本替换" },
+        expectedSelectionText: { type: "string", description: "预期当前选区文本的开头（20-30 字，可选但强烈建议；不符会拒绝执行）" }
+      }
     },
-    handler: async ({ blocks, text } = {}) => {
+    handler: async ({ blocks, text, expectedSelectionText } = {}) => {
+      // 防错位核验：选区实际内容与预期不符时拒绝替换（替换是破坏性操作，错位代价高）
+      if (expectedSelectionText != null && String(expectedSelectionText).trim()) {
+        const info = typeof writer().readSelectionInfo === "function" ? await writer().readSelectionInfo() : null;
+        const norm = (s) => String(s || "").replace(/[\r\x07\s]+/g, "");
+        const exp = norm(expectedSelectionText).slice(0, 30);
+        const act = norm(info && info.text);
+        const matched = exp && act && (act.startsWith(exp) || exp.startsWith(act));
+        if (exp && !matched) {
+          throw new Error(`STALE_SELECTION：当前选区内容是「${act.slice(0, 30) || "(空/无选区)"}」，与预期「${exp}」不符。选区已失效，请重新定位（建文档地图 + 带 expectedText 的 wps_select_paragraph）后再替换。`);
+        }
+      }
       const normalized = normalizeBlocksOrText(blocks, text);
       if (!normalized.count) throw new Error("wps_replace_selection 收到空内容，未执行替换。");
       // 选区含对象 -> 走保留路径（对象不删），无论 blocks 还是 text。
@@ -1674,18 +1689,32 @@
   registry.registerTool({
     name: "wps_select_paragraph",
     hosts: ["wps"],
-    description: "把选区移到指定序号的段落上（用于 wps_get_outline 返回的 index 跳转）。",
+    description: "把选区移到指定序号的段落上（用于 wps_get_outline / 文档地图返回的 index 跳转）。必须传 expectedText（预期段落文本的开头 20-30 字）做防错位核验：插入/删除内容后段落序号会整体移位，凭旧序号操作会改错位置。核验失败会报 STALE_INDEX——此时必须重新建文档地图/大纲再操作，不要换序号重试。",
     parameters: {
       type: "object",
-      required: ["index"],
+      required: ["index", "expectedText"],
       properties: {
-        index: { type: "integer", minimum: 1, description: "段落序号（从 1 开始）" }
+        index: { type: "integer", minimum: 1, description: "段落序号（从 1 开始）" },
+        expectedText: { type: "string", description: "预期该段落文本的开头（20-30 字即可，用于核验序号未失效）" }
       }
     },
-    handler: async ({ index } = {}) => {
+    handler: async ({ index, expectedText } = {}) => {
       const document = await getActiveDocument();
       const p = document.Paragraphs.Item(index);
       if (!p) throw new Error(`段落 ${index} 不存在`);
+      // 防错位核验：实际段落文本与预期不符，说明序号已失效（结构变动后移位），拒绝操作
+      if (expectedText != null && String(expectedText).trim()) {
+        let actual = "";
+        try { actual = String(p.Range.Text || ""); } catch (e) {}
+        const norm = (s) => String(s).replace(/[\r\x07\s]+/g, "");
+        const exp = norm(expectedText).slice(0, 30);
+        const act = norm(actual);
+        // 前缀互判：一方是另一方的前缀即视为匹配（预期截 30 字、空段 vs 非空预期等情况都不误判）
+        const matched = exp && act && (act.startsWith(exp) || exp.startsWith(act));
+        if (exp && !matched) {
+          throw new Error(`STALE_INDEX：段落 ${index} 的实际内容是「${act.slice(0, 30) || "(空)"}」，与预期「${exp}」不符。文档结构已变化（插入/删除导致序号移位），请重新建文档地图/大纲获取最新序号后再操作。`);
+        }
+      }
       p.Range.Select();
       return { selected: index };
     }

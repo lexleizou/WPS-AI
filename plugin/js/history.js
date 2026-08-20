@@ -207,6 +207,10 @@
       docPath: openDocPath,
       backup: null      // { docPath, docId, backupPath, size, ts, undoGroup } 由 ensureBackupForTurn 填
     };
+    // 开 turn 立刻落盘（B36 的另一半）：否则单 turn 会话（没有再按发送）时这个 turn
+    // 永远不会持久化，备份失败/异常现场就丢了记录入口。
+    turns[currentTurn.id] = currentTurn;
+    persistTurns();
     notify();
     return currentTurn.id;
   }
@@ -242,13 +246,21 @@
       }
       // 没存盘的新文档之类失败原因，记下不再重试
       currentTurn.backup = { error: res?.error || "备份失败", ts: Date.now() };
+      // 失败也要落盘（registry 会凭 backup.error 拦下后续修改型工具，用户排障需要看到这条记录）
+      turns[currentTurn.id] = currentTurn;
+      persistTurns();
       notify();
       return null;
     } catch (e) {
       currentTurn.backup = { error: e?.message || String(e), ts: Date.now() };
+      turns[currentTurn.id] = currentTurn;
+      persistTurns();
       return null;
     }
   }
+
+  // 本轮备份失败原因（registry.execute 据此 fail-closed 拦截修改型工具）
+  function getTurnBackupError() { return currentTurn?.backup?.error || null; }
 
   // 历史 turn 加上当前 turn 一起返回
   function listTurns() {
@@ -451,6 +463,7 @@
     ensureBackupForTurn,
     listTurns,
     getCurrentTurnId,
+    getTurnBackupError,
     deleteTurn,
     markTurnRestored,
     reloadFromStore,

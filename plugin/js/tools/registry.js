@@ -125,7 +125,18 @@
           };
         }
         // 修改型工具调用前确保本轮已有文档备份（首个修改型工具触发，懒备份）
-        try { await history.ensureBackupForTurn?.(); } catch (e) {}
+        try {
+          await history.ensureBackupForTurn?.();
+          // fail-closed：备份失败（保存不了/代理不通等）时拦截修改——宁可不执行，
+          // 也不在没有回退保障的情况下动用户文档（2026-08-20 教训：备份静默失败 + 继续修改 = 文档被改乱且无回退点）
+          const backupError = history.getTurnBackupError?.();
+          if (backupError) {
+            return {
+              ok: false,
+              error: `文档备份失败（${backupError}），为保护文档，本次修改型操作已被拦截。请手动保存一次文档（Cmd/Ctrl+S）确认文档可写、并确认本地服务在线后，再让 AI 重试。`
+            };
+          }
+        } catch (e) {}
         const pre = await snap.captureBefore(host, name, args);
         target = pre?.target || null;
         before = pre?.before || null;
