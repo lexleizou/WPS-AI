@@ -1898,12 +1898,16 @@
       try {
         pf[field] = value;
         const actual = Number(pf[field]);
-        if (actual !== Number(value)) failures.push({ field, expected: value, actual });
+        if (!Number.isFinite(actual) || Math.abs(actual - Number(value)) > 0.01) failures.push({ field, expected: value, actual });
       } catch (e) {
         failures.push({ field, expected: value, error: String((e && e.message) || e) });
       }
     };
     if (opts.alignment && WD_ALIGN[opts.alignment] != null) applyProp("Alignment", WD_ALIGN[opts.alignment]);
+    // WPS 的字符单位缩进会覆盖点值。显式设置点值前先清对应字符单位，再写点值。
+    if (numOr(opts.characterUnitLeftIndent) != null || numOr(opts.leftIndent) != null) applyProp("CharacterUnitLeftIndent", numOr(opts.characterUnitLeftIndent) != null ? opts.characterUnitLeftIndent : 0);
+    if (numOr(opts.characterUnitRightIndent) != null || numOr(opts.rightIndent) != null) applyProp("CharacterUnitRightIndent", numOr(opts.characterUnitRightIndent) != null ? opts.characterUnitRightIndent : 0);
+    if (numOr(opts.characterUnitFirstLineIndent) != null || numOr(opts.firstLineIndent) != null) applyProp("CharacterUnitFirstLineIndent", numOr(opts.characterUnitFirstLineIndent) != null ? opts.characterUnitFirstLineIndent : 0);
     if (numOr(opts.leftIndent) != null) applyProp("LeftIndent", opts.leftIndent);
     if (numOr(opts.rightIndent) != null) applyProp("RightIndent", opts.rightIndent);
     if (numOr(opts.firstLineIndent) != null) applyProp("FirstLineIndent", opts.firstLineIndent);
@@ -2006,12 +2010,15 @@
       try {
         obj[field] = value;
         const actual = Number(obj[field]);
-        if (actual !== Number(value)) failures.push({ field, expected: value, actual });
+        if (!Number.isFinite(actual) || Math.abs(actual - Number(value)) > 0.01) failures.push({ field, expected: value, actual });
       } catch (e) {
         failures.push({ field, expected: value, error: String((e && e.message) || e) });
       }
     };
     if (para.alignment && WD_ALIGN[para.alignment] != null) applyProp(pf, "Alignment", WD_ALIGN[para.alignment]);
+    if (numOr(para.characterUnitLeftIndent) != null || numOr(para.leftIndent) != null) applyProp(pf, "CharacterUnitLeftIndent", numOr(para.characterUnitLeftIndent) != null ? para.characterUnitLeftIndent : 0);
+    if (numOr(para.characterUnitRightIndent) != null || numOr(para.rightIndent) != null) applyProp(pf, "CharacterUnitRightIndent", numOr(para.characterUnitRightIndent) != null ? para.characterUnitRightIndent : 0);
+    if (numOr(para.characterUnitFirstLineIndent) != null || numOr(para.firstLineIndent) != null) applyProp(pf, "CharacterUnitFirstLineIndent", numOr(para.characterUnitFirstLineIndent) != null ? para.characterUnitFirstLineIndent : 0);
     if (numOr(para.leftIndent) != null) applyProp(pf, "LeftIndent", para.leftIndent);
     if (numOr(para.rightIndent) != null) applyProp(pf, "RightIndent", para.rightIndent);
     if (numOr(para.firstLineIndent) != null) applyProp(pf, "FirstLineIndent", para.firstLineIndent);

@@ -215,16 +215,19 @@
     return currentTurn.id;
   }
 
-  // 修改型工具调用前调一下；同一个 turn 只会 capture 一次
-  async function ensureBackupForTurn() {
-    if (!currentTurn) return null;
-    if (currentTurn.backup) return currentTurn.backup;  // 已经抓过
+  // 修改型工具调用前调一下；同一个 turn 只会 capture 一次。
+  // expectedTurnId 把异步备份绑定到发起它的 turn，禁止 await 期间新 turn 抢走结果。
+  async function ensureBackupForTurn(expectedTurnId) {
+    const turn = currentTurn;
+    if (!turn) return null;
+    if (expectedTurnId && turn.id !== expectedTurnId) throw new Error("TURN_CHANGED_DURING_BACKUP");
+    if (turn.backup) return turn.backup;
     const backup = global.WpsAiBackup;
     if (!backup) return null;
     try {
       const res = await backup.captureCurrentDoc();
       if (res?.ok) {
-        currentTurn.backup = {
+        turn.backup = {
           docPath: res.docPath,
           docId: res.docId || null,
           backupPath: res.backupPath,
@@ -233,34 +236,35 @@
           // 是否启动了 UndoRecord。回退时优先走 Application.Undo,失败再走文件层。
           undoGroup: !!res.undoGroup
         };
-        // 顺手把 currentTurn 顶层的 docId / docPath 也补齐
-        if (res.docId && !currentTurn.docId) currentTurn.docId = res.docId;
-        if (res.docPath && !currentTurn.docPath) currentTurn.docPath = res.docPath;
-        // 修 B36：备份路径已拿到，立即把 currentTurn 落盘。否则要等下一次 startTurn 才写入，
-        // 期间用户关闭/刷新 TaskPane 或 WPS 崩溃，这个 turn 的回滚入口（backupPath）就丢了——
-        // 恰恰是"AI 改坏了文档、重启回滚"最需要恢复的场景。
-        turns[currentTurn.id] = currentTurn;
+        if (res.docId && !turn.docId) turn.docId = res.docId;
+        if (res.docPath && !turn.docPath) turn.docPath = res.docPath;
+        turns[turn.id] = turn;
         persistTurns();
         notify();
-        return currentTurn.backup;
+        // 备份只能归属发起它的 turn；若期间 currentTurn 已变化，返回前显式报 stale。
+        if (currentTurn !== turn || (expectedTurnId && currentTurn?.id !== expectedTurnId)) {
+          throw new Error("TURN_CHANGED_DURING_BACKUP");
+        }
+        return turn.backup;
       }
-      // 没存盘的新文档之类失败原因，记下不再重试
-      currentTurn.backup = { error: res?.error || "备份失败", ts: Date.now() };
-      // 失败也要落盘（registry 会凭 backup.error 拦下后续修改型工具，用户排障需要看到这条记录）
-      turns[currentTurn.id] = currentTurn;
+      turn.backup = { error: res?.error || "备份失败", ts: Date.now() };
+      turns[turn.id] = turn;
       persistTurns();
       notify();
       return null;
     } catch (e) {
-      currentTurn.backup = { error: e?.message || String(e), ts: Date.now() };
-      turns[currentTurn.id] = currentTurn;
+      if (!turn.backup?.backupPath) turn.backup = { error: e?.message || String(e), ts: Date.now() };
+      turns[turn.id] = turn;
       persistTurns();
       return null;
     }
   }
 
-  // 本轮备份失败原因（registry.execute 据此 fail-closed 拦截修改型工具）
-  function getTurnBackupError() { return currentTurn?.backup?.error || null; }
+  // 本轮/指定轮备份失败原因（registry.execute 据此 fail-closed 拦截修改型工具）
+  function getTurnBackupError(turnId) {
+    const turn = turnId ? (currentTurn?.id === turnId ? currentTurn : turns[turnId]) : currentTurn;
+    return turn?.backup?.error || null;
+  }
 
   // 历史 turn 加上当前 turn 一起返回
   function listTurns() {
@@ -273,18 +277,28 @@
 
   function getCurrentTurn() { return currentTurn; }
 
-  function markCurrentTurnFailed(reason) {
-    if (!currentTurn) return false;
-    currentTurn.blocked = true;
-    currentTurn.failedAt = Date.now();
-    currentTurn.failureReason = reason ? String(reason).slice(0, 500) : "修改失败";
-    turns[currentTurn.id] = currentTurn;
+  function getTurn(turnId) {
+    if (!turnId) return null;
+    return currentTurn?.id === turnId ? currentTurn : (turns[turnId] || null);
+  }
+
+  function markTurnFailed(turnId, reason) {
+    const turn = getTurn(turnId);
+    if (!turn) return false;
+    turn.blocked = true;
+    turn.failedAt = Date.now();
+    turn.failureReason = reason ? String(reason).slice(0, 500) : "修改失败";
+    turns[turn.id] = turn;
     persistTurns();
     notify();
     return true;
   }
 
-  function isCurrentTurnBlocked() { return !!currentTurn?.blocked; }
+  function markCurrentTurnFailed(reason) { return markTurnFailed(currentTurn?.id, reason); }
+
+  function isTurnBlocked(turnId) { return !!getTurn(turnId)?.blocked; }
+
+  function isCurrentTurnBlocked() { return isTurnBlocked(currentTurn?.id); }
 
   function deleteTurn(turnId) {
     delete turns[turnId];
@@ -479,8 +493,11 @@
     listTurns,
     getCurrentTurnId,
     getCurrentTurn,
+    getTurn,
     getTurnBackupError,
+    markTurnFailed,
     markCurrentTurnFailed,
+    isTurnBlocked,
     isCurrentTurnBlocked,
     deleteTurn,
     markTurnRestored,

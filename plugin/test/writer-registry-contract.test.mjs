@@ -104,6 +104,42 @@ test("document mutation fails closed when backup returns no backupPath", async (
   assert.equal(calls, 0);
 });
 
+test("document tools execute inside the unified mutation transaction", async () => {
+  let coordinatorCalls = 0;
+  let handlerCalls = 0;
+  const registry = loadRegistry({
+    WpsAiHistory: {
+      isMutatingTool: () => true,
+      getFriendlyName: (name) => name,
+      addEntry: () => {}
+    },
+    WpsAiSnapshot: {
+      detectHost: () => "wps",
+      captureBefore: async () => ({ target: { label: "§1" }, before: {}, _captureAfter: async () => ({}) }),
+      captureAfter: async () => ({})
+    },
+    WpsAiBackup: { getCurrentDocPath: () => "/tmp/contract.docx" },
+    WpsAiDocumentMutation: {
+      run: async (options) => {
+        coordinatorCalls += 1;
+        const value = await options.mutate(options.args, { turnId: "t1", docPath: "/tmp/contract.docx" });
+        return { ok: true, value };
+      }
+    }
+  });
+  registry.registerTool({
+    name: "contract_coordinated_write",
+    hosts: ["wps"],
+    sideEffect: "document",
+    parameters: { type: "object", properties: {} },
+    handler: async () => { handlerCalls += 1; return { applied: true }; }
+  });
+  const result = await registry.execute("contract_coordinated_write", {});
+  assert.equal(result.ok, true);
+  assert.equal(coordinatorCalls, 1);
+  assert.equal(handlerCalls, 1);
+});
+
 test("duplicate tool registration requires an explicit replacement declaration", () => {
   const registry = loadRegistry();
   registry.registerTool({

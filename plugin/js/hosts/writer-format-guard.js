@@ -12,6 +12,9 @@
     alignment: ["paragraph", "Alignment"],
     spaceBefore: ["paragraph", "SpaceBefore"],
     spaceAfter: ["paragraph", "SpaceAfter"],
+    characterUnitFirstLineIndent: ["paragraph", "CharacterUnitFirstLineIndent"],
+    characterUnitLeftIndent: ["paragraph", "CharacterUnitLeftIndent"],
+    characterUnitRightIndent: ["paragraph", "CharacterUnitRightIndent"],
     firstLineIndent: ["paragraph", "FirstLineIndent"],
     leftIndent: ["paragraph", "LeftIndent"],
     rightIndent: ["paragraph", "RightIndent"]
@@ -157,6 +160,9 @@
         LineSpacingRule: safeRead(paragraphFormat, "LineSpacingRule"),
         SpaceBefore: safeRead(paragraphFormat, "SpaceBefore"),
         SpaceAfter: safeRead(paragraphFormat, "SpaceAfter"),
+        CharacterUnitFirstLineIndent: safeRead(paragraphFormat, "CharacterUnitFirstLineIndent"),
+        CharacterUnitLeftIndent: safeRead(paragraphFormat, "CharacterUnitLeftIndent"),
+        CharacterUnitRightIndent: safeRead(paragraphFormat, "CharacterUnitRightIndent"),
         FirstLineIndent: safeRead(paragraphFormat, "FirstLineIndent"),
         LeftIndent: safeRead(paragraphFormat, "LeftIndent"),
         RightIndent: safeRead(paragraphFormat, "RightIndent")
@@ -260,8 +266,13 @@
     const applied = [], failed = [];
     function write(target, key, value, label) {
       const result = safeWrite(target, key, value);
-      if (result.ok) applied.push(label);
-      else failed.push({ field: label, error: result.error });
+      if (!result.ok) {
+        failed.push({ field: label, expected: value, error: result.error });
+        return;
+      }
+      const actual = safeRead(target, key);
+      if (typeof value === "number" ? closeEnough(actual, value) : actual === value) applied.push(label);
+      else failed.push({ field: label, expected: value, actual });
     }
     if (diff.fontName) {
       const names = Array.isArray(diff.fontName) ? diff.fontName : ["Name", "NameFarEast"];
@@ -269,9 +280,14 @@
     }
     if (diff.fontSize) write(font, "Size", requirements.fontSize, "font.Size");
     if (diff.lineSpacingRule) write(paragraphFormat, "LineSpacingRule", LINE_RULES[requirements.lineSpacingRule], "paragraph.LineSpacingRule");
+    // WPS 同时维护字符单位和点值缩进；字符单位非零时，直接写 LeftIndent/FirstLineIndent
+    // 可能被静默恢复。先清字符单位，再写点值，并逐字段即时回读。
     const keys = {
+      characterUnitFirstLineIndent: "CharacterUnitFirstLineIndent",
+      characterUnitLeftIndent: "CharacterUnitLeftIndent",
+      characterUnitRightIndent: "CharacterUnitRightIndent",
       lineSpacing: "LineSpacing", alignment: "Alignment", spaceBefore: "SpaceBefore", spaceAfter: "SpaceAfter",
-      firstLineIndent: "FirstLineIndent", leftIndent: "LeftIndent", rightIndent: "RightIndent"
+      leftIndent: "LeftIndent", rightIndent: "RightIndent", firstLineIndent: "FirstLineIndent"
     };
     Object.entries(keys).forEach(([field, key]) => { if (diff[field]) write(paragraphFormat, key, requirements[field], `paragraph.${key}`); });
     return { applied, failed };
@@ -335,6 +351,6 @@
     version: VERSION,
     auditParagraphFormat,
     applyParagraphFormatMismatches,
-    _internal: { normalizeRequirements, diffSnapshot, groupMismatches, documentFingerprint, audits, LINE_RULES }
+    _internal: { normalizeRequirements, diffSnapshot, groupMismatches, applyDiff, documentFingerprint, audits, LINE_RULES }
   };
 })(window);

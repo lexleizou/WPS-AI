@@ -203,6 +203,9 @@
     const sideEffect = def.sideEffect || (inferredMutation ? "document" : "none");
     const mutatesDocument = sideEffect === "document";
     const recordable = mutatesDocument && !!history && !!snap;
+    const mutationCoordinator = mutatesDocument && typeof global.WpsAiDocumentMutation?.run === "function"
+      ? global.WpsAiDocumentMutation
+      : null;
 
     let target = null;
     let before = null;
@@ -213,12 +216,8 @@
       if (!history || !snap || !backup) {
         return { ok: false, error: "BACKUP_REQUIRED: Writer 修改安全模块未完整加载，本次操作未执行。" };
       }
-      if (global.WpsAiDocumentMutation?.prepare) {
-        const prepared = await global.WpsAiDocumentMutation.prepare({ label: `external:${name}`, toolName: name });
-        if (!prepared.ok) return { ok: false, error: prepared.error || prepared.code || "BACKUP_REQUIRED" };
-        docPath = prepared.docPath;
-      } else {
-        // 独立测试/降级加载路径仍保持严格 fail-closed；正式 main.js 会走上面的统一协调器。
+      if (!mutationCoordinator) {
+        // 独立测试/降级加载路径仍保持严格 fail-closed；正式 main.js 会走统一协调器的串行事务。
         if (history.isCurrentTurnBlocked?.()) {
           return { ok: false, error: "TURN_MUTATION_BLOCKED: 本轮已有修改失败并已进入回滚状态，请开始新一轮后再操作。" };
         }
@@ -248,39 +247,58 @@
           return { ok: false, error: `BACKUP_REQUIRED: ${e?.message || e}` };
         }
       }
-      try {
-        const pre = await snap.captureBefore(host, name, args);
-        target = pre?.target || null;
-        before = pre?.before || null;
-        captureAfterFn = pre?._captureAfter || null;
-      } catch (e) { /* 快照只影响历史展示；持久备份已成功，主流程可继续 */ }
+      if (!mutationCoordinator) {
+        try {
+          const pre = await snap.captureBefore(host, name, args);
+          target = pre?.target || null;
+          before = pre?.before || null;
+          captureAfterFn = pre?._captureAfter || null;
+        } catch (e) { /* 快照只影响历史展示；持久备份已成功，主流程可继续 */ }
+      }
     }
 
     let result;
     try {
-      // Word 用 Document.Protect 锁住后 COM 也写不了，要临时解锁执行后再加锁
-      // Excel 用 UserInterfaceOnly 不需要 tempUnlock；PPT 没硬锁也不需要。
-      // WpsAiLock.tempUnlock 自动判断：没锁 / 非 Word / 解锁失败 都直接调 fn
+      // Word 用 Document.Protect 锁住后 COM 也写不了，要临时解锁执行后再加锁。
       const runner = global.WpsAiLock?.tempUnlock
         ? () => global.WpsAiLock.tempUnlock(() => def.handler(args || {}, ctx))
         : () => def.handler(args || {}, ctx);
-      const value = await runner();
-      if (mutatesDocument && global.WpsAiDocumentMutation?.assessResult) {
-        const assessment = global.WpsAiDocumentMutation.assessResult(value);
-        if (!assessment.ok) {
-          const detail = assessment.issues.map((item) => `${item.label}:${item.detail}`).join("；");
-          const rollback = await global.WpsAiDocumentMutation.rollbackCurrentTurn(detail);
-          result = { ok: false, error: `PARTIAL_MUTATION: ${detail}`, rollback };
-        } else {
-          result = { ok: true, value };
-        }
+      if (mutationCoordinator) {
+        const coordinated = await mutationCoordinator.run({
+          label: `external:${name}`,
+          toolName: name,
+          args,
+          mutate: async () => {
+            docPath = backup.getCurrentDocPath?.() || null;
+            if (recordable) {
+              try {
+                const pre = await snap.captureBefore(host, name, args);
+                target = pre?.target || null;
+                before = pre?.before || null;
+                captureAfterFn = pre?._captureAfter || null;
+              } catch (e) { /* 快照只影响历史展示，不影响事务本身 */ }
+            }
+            return await runner();
+          }
+        });
+        result = coordinated.ok
+          ? { ok: true, value: coordinated.value }
+          : { ok: false, error: coordinated.error || coordinated.code || "文档修改失败", rollback: coordinated.rollback || null };
       } else {
-        result = { ok: true, value };
+        const value = await runner();
+        if (mutatesDocument && global.WpsAiDocumentMutation?.assessResult) {
+          const assessment = global.WpsAiDocumentMutation.assessResult(value);
+          if (!assessment.ok) {
+            const detail = assessment.issues.map((item) => `${item.label}:${item.detail}`).join("；");
+            const rollback = await global.WpsAiDocumentMutation.rollbackCurrentTurn(detail);
+            result = { ok: false, error: `PARTIAL_MUTATION: ${detail}`, rollback };
+          } else result = { ok: true, value };
+        } else result = { ok: true, value };
       }
     } catch (error) {
       const message = error?.message || String(error);
       let rollback = null;
-      if (mutatesDocument && global.WpsAiDocumentMutation?.rollbackCurrentTurn) {
+      if (!mutationCoordinator && mutatesDocument && global.WpsAiDocumentMutation?.rollbackCurrentTurn) {
         rollback = await global.WpsAiDocumentMutation.rollbackCurrentTurn(message);
       }
       result = { ok: false, error: message, rollback };

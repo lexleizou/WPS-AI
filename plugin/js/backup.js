@@ -258,6 +258,34 @@
 
   // ---- snapshot ----
 
+  // 将已打开但非活动的目标文档切回活动状态。回滚前必须先完成此核验，
+  // 否则 Application.Undo 会作用到错误文档，直接覆盖磁盘又可能和已打开句柄冲突。
+  function activateDocumentByPath(targetPath) {
+    if (!targetPath) return false;
+    if (pathsEqual(getCurrentDocPath(), targetPath)) return true;
+    const { app, host } = getActiveDoc();
+    if (!app) return false;
+    let collection = null;
+    try { collection = host === "et" ? app.Workbooks : (host === "wpp" ? app.Presentations : app.Documents); } catch (e) {}
+    if (!collection) return false;
+    let count = 0;
+    try { count = Number(collection.Count) || 0; } catch (e) {}
+    for (let i = 1; i <= count; i += 1) {
+      let candidate = null;
+      try { candidate = typeof collection.Item === "function" ? collection.Item(i) : collection[i]; } catch (e) {}
+      if (!candidate) continue;
+      let candidatePath = "";
+      try { candidatePath = String(candidate.FullName || ""); } catch (e) {}
+      if (!candidatePath || !pathsEqual(candidatePath, targetPath)) continue;
+      try {
+        if (typeof candidate.Activate === "function") candidate.Activate();
+        else if (typeof candidate.Select === "function") candidate.Select();
+      } catch (e) { return false; }
+      return pathsEqual(getCurrentDocPath(), targetPath);
+    }
+    return false;
+  }
+
   async function captureCurrentDoc() {
     const { app, doc, host } = getActiveDoc();
     if (!doc) return { ok: false, error: "未检测到打开的文档" };
@@ -489,6 +517,7 @@
     endUndoGroup,
     restoreFromBackup,
     getCurrentDocPath,
+    activateDocumentByPath,
     getCurrentDocSaveState,
     listBackups,
     // 文档身份（跨重命名 / Save As / 跨机同步稳定）

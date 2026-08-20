@@ -97,6 +97,8 @@
     return global.WpsAiRuntime?.proxyBase?.() || "http://127.0.0.1:3890";
   }
 
+  function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
+
   async function exportAndLoadPdf(writer) {
     const dirResp = await fetch(proxyBase() + "/review/dir");
     const dirData = await dirResp.json().catch(() => ({}));
@@ -104,18 +106,31 @@
       throw new Error(dirData.error || `获取审阅目录失败（HTTP ${dirResp.status}）`);
     }
     const dir = String(dirData.dir).replace(/[\\/]+$/, "");
-    const pdfPath = `${dir}/turn-${Date.now()}.pdf`;
-    await writer.exportToPdf(pdfPath);
-    const fileResp = await fetch(proxyBase() + "/load-local-file", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path: pdfPath })
-    });
-    const fileData = await fileResp.json().catch(() => ({}));
-    if (!fileResp.ok || !fileData.ok || !fileData.base64) {
-      throw new Error(fileData.error || `读取导出的 PDF 失败（HTTP ${fileResp.status}）`);
+    const requestedPath = `${dir}/turn-${Date.now()}.pdf`;
+    const exported = await writer.exportToPdf(requestedPath);
+    // macOS WPS 的 ExportAsFixedFormat 可能在 JSAPI 返回后才真正落盘；同时尊重宿主返回的实际路径。
+    const pdfPath = String(exported?.path || requestedPath);
+    const deadline = Date.now() + 10000;
+    let attempt = 0;
+    let lastError = "";
+    while (Date.now() < deadline) {
+      attempt += 1;
+      const fileResp = await fetch(proxyBase() + "/load-local-file", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: pdfPath })
+      });
+      const fileData = await fileResp.json().catch(() => ({}));
+      if (fileResp.ok && fileData.ok && fileData.base64 && Number(fileData.size || 0) > 0) {
+        return base64ToBytes(fileData.base64);
+      }
+      lastError = fileData.error || `HTTP ${fileResp.status}`;
+      const retryable = !fileResp.ok && (fileResp.status === 404 || fileResp.status === 400)
+        && /不存在|找不到|not found|no such file|enoent|空文件|empty/i.test(String(lastError));
+      if (!retryable) throw new Error(`读取导出的 PDF 失败：${lastError}`);
+      await sleep(Math.min(1000, 120 + attempt * 120));
     }
-    return base64ToBytes(fileData.base64);
+    throw new Error(`读取导出的 PDF 超时（WPS 10 秒内未完成落盘）：${lastError || pdfPath}`);
   }
 
   function base64ToBytes(base64) {
@@ -320,5 +335,5 @@
     }
   }
 
-  global.WpsAiAutoReview = { run, normalizeMode, MODES };
+  global.WpsAiAutoReview = { run, normalizeMode, MODES, _internal: { exportAndLoadPdf, base64ToBytes } };
 })(window);

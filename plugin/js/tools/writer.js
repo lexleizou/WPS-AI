@@ -207,12 +207,13 @@
   registry.registerTool({
     name: "wps_format_paragraph",
     hosts: ["wps"],
-    description: "设置当前选区的段落格式（字体之外的排版），仅用于用户已选中的局部选区（选区折叠时会报错，请先选中）。禁止用 scope=document 全量写入：全文/范围统一格式必须改用 wps_audit_paragraph_format → wps_apply_paragraph_format_mismatches → 再次审计复核。alignment 对齐(left/center/right/justify/distribute)；leftIndent/rightIndent/firstLineIndent 缩进(磅)；lineSpacing 行距(磅) + lineSpacingRule(single/oneAndHalf/double/atLeast/exactly/multiple)；spaceBefore/spaceAfter 段前段后(磅)。",
+    description: "设置当前选区的段落格式（字体之外的排版），仅用于用户已选中的局部选区（选区折叠时会报错，请先选中）。禁止用 scope=document 全量写入：全文/范围统一格式必须改用 wps_audit_paragraph_format → wps_apply_paragraph_format_mismatches → 再次审计复核。alignment 对齐；leftIndent/rightIndent/firstLineIndent 为磅值缩进。明确设置点值缩进时会先把对应 CharacterUnit 缩进清零，防止 WPS 静默恢复旧值。",
     parameters: {
       type: "object",
       properties: {
         scope: { type: "string", enum: ["selection", "document"] },
         alignment: { type: "string", enum: ["left", "center", "right", "justify", "distribute"] },
+        characterUnitLeftIndent: { type: "number" }, characterUnitRightIndent: { type: "number" }, characterUnitFirstLineIndent: { type: "number" },
         leftIndent: { type: "number" }, rightIndent: { type: "number" }, firstLineIndent: { type: "number" },
         lineSpacing: { type: "number" }, lineSpacingRule: { type: "string", enum: ["single", "oneAndHalf", "double", "atLeast", "exactly", "multiple"] },
         spaceBefore: { type: "number" }, spaceAfter: { type: "number" }
@@ -269,13 +270,13 @@
   registry.registerTool({
     name: "wps_modify_style",
     hosts: ["wps"],
-    description: "修改一个段落样式的定义（改样式才扛得住目录/域刷新；直接刷 TOC 段落格式会在刷新后丢失）。name 样式名（如「目录 1」「标题 1」），或 builtinId 内置 id（目录1-9 = -20..-28）。paragraph 支持 alignment/leftIndent/rightIndent/firstLineIndent/spaceBefore/spaceAfter/lineSpacing；font 支持 name/size/bold；tabs 数组同 wps_set_tab_stops。",
+    description: "修改一个段落样式的定义（改样式才扛得住目录/域刷新；直接刷 TOC 段落格式会在刷新后丢失）。name 样式名（如「目录 1」「标题 1」），或 builtinId 内置 id（目录1-9 = -20..-28）。设置点值缩进时自动先清零对应 CharacterUnit 缩进；也可显式传 characterUnitLeftIndent/characterUnitFirstLineIndent/characterUnitRightIndent。",
     parameters: {
       type: "object",
       properties: {
         name: { type: "string" },
         builtinId: { type: "number", description: "内置样式 id，目录1-9=-20..-28，标题1-4=-2..-5" },
-        paragraph: { type: "object", properties: { alignment: { type: "string" }, leftIndent: { type: "number" }, rightIndent: { type: "number" }, firstLineIndent: { type: "number" }, spaceBefore: { type: "number" }, spaceAfter: { type: "number" }, lineSpacing: { type: "number" } } },
+        paragraph: { type: "object", properties: { alignment: { type: "string" }, characterUnitLeftIndent: { type: "number" }, characterUnitRightIndent: { type: "number" }, characterUnitFirstLineIndent: { type: "number" }, leftIndent: { type: "number" }, rightIndent: { type: "number" }, firstLineIndent: { type: "number" }, spaceBefore: { type: "number" }, spaceAfter: { type: "number" }, lineSpacing: { type: "number" } } },
         font: { type: "object", properties: { name: { type: "string" }, size: { type: "number" }, bold: { type: "boolean" } } },
         tabs: { type: "array", items: { type: "object", required: ["position"], properties: { position: { type: "number" }, alignment: { type: "string" }, leader: { type: "string" } } } }
       }

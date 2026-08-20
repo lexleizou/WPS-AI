@@ -66,6 +66,106 @@ test("partial mutation result rolls back the current turn", async () => {
   assert.equal(result.rollback.ok, true);
 });
 
+test("prepare refuses a new turn created while the backup is pending", async () => {
+  let currentTurnId = "t1";
+  const mutation = loadMutation({
+    WpsAiHistory: {
+      getCurrentTurnId: () => currentTurnId,
+      isCurrentTurnBlocked: () => false,
+      ensureBackupForTurn: async (turnId) => {
+        assert.equal(turnId, "t1");
+        currentTurnId = "t2";
+        return { backupPath: "/tmp/a.backup.docx", docPath: "/tmp/a.docx", docId: "doc-1" };
+      },
+      getTurnBackupError: () => null
+    },
+    WpsAiBackup: { getCurrentDocPath: () => "/tmp/a.docx", readDocId: () => "doc-1" }
+  });
+  const result = await mutation.prepare({ label: "race", toolName: "wps_write" });
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "TURN_CHANGED_DURING_BACKUP");
+});
+
+test("a document switch before write prevents mutate from running", async () => {
+  let pathReads = 0;
+  let mutated = 0;
+  const mutation = loadMutation({
+    WpsAiHistory: {
+      getCurrentTurnId: () => "t1",
+      isCurrentTurnBlocked: () => false,
+      ensureBackupForTurn: async () => ({ backupPath: "/tmp/a.backup.docx", docPath: "/tmp/a.docx", docId: "doc-1" }),
+      getTurnBackupError: () => null,
+      pathsEqual: (a, b) => a === b
+    },
+    WpsAiBackup: {
+      getCurrentDocPath: () => (++pathReads >= 3 ? "/tmp/b.docx" : "/tmp/a.docx"),
+      readDocId: () => "doc-1"
+    }
+  });
+  const result = await mutation.run({ toolName: "wps_write", mutate: async () => { mutated += 1; return { ok: true }; } });
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "DOCUMENT_CHANGED_DURING_MUTATION");
+  assert.equal(mutated, 0);
+});
+
+test("rollback uses the immutable transaction even if current turn changes", async () => {
+  let currentTurnId = "t1";
+  let restoredArgs = null;
+  let failedTurn = null;
+  const mutation = loadMutation({
+    WpsAiHistory: {
+      getCurrentTurnId: () => currentTurnId,
+      getTurn: () => null,
+      isCurrentTurnBlocked: () => false,
+      ensureBackupForTurn: async () => ({ backupPath: "/tmp/a.backup.docx", docPath: "/tmp/a.docx", docId: "doc-1" }),
+      getTurnBackupError: () => null,
+      markTurnFailed: (turnId) => { failedTurn = turnId; },
+      pathsEqual: (a, b) => a === b
+    },
+    WpsAiBackup: {
+      getCurrentDocPath: () => "/tmp/a.docx",
+      readDocId: () => "doc-1",
+      endUndoGroup: () => true,
+      restoreFromBackup: async (...args) => { restoredArgs = args; return { ok: true }; }
+    }
+  });
+  const result = await mutation.run({
+    toolName: "wps_write",
+    mutate: async () => { currentTurnId = "t2"; return { ok: true }; }
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "TURN_CHANGED_DURING_MUTATION");
+  assert.equal(failedTurn, "t1");
+  assert.equal(restoredArgs[0], "/tmp/a.backup.docx");
+  assert.equal(restoredArgs[1], "/tmp/a.docx");
+});
+
+test("rollback never restores a non-active document when activation fails", async () => {
+  let restored = 0;
+  const mutation = loadMutation({
+    WpsAiHistory: {
+      getCurrentTurnId: () => "t2",
+      getTurn: () => null,
+      markTurnFailed: () => true,
+      pathsEqual: (a, b) => a === b
+    },
+    WpsAiBackup: {
+      getCurrentDocPath: () => "/tmp/b.docx",
+      activateDocumentByPath: () => false,
+      restoreFromBackup: async () => { restored += 1; return { ok: true }; }
+    }
+  });
+  const result = await mutation.rollbackTransaction({
+    turnId: "t1",
+    docId: "doc-1",
+    docPath: "/tmp/a.docx",
+    backupPath: "/tmp/a.backup.docx"
+  }, "failed");
+  assert.equal(result.ok, false);
+  assert.equal(result.deferred, true);
+  assert.equal(restored, 0);
+});
+
 test("backup failure closes the UndoRecord it opened", async () => {
   let starts = 0;
   let ends = 0;

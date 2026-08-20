@@ -17,6 +17,9 @@
     lineSpacingRule: { type: "string", enum: ["single", "oneAndHalf", "double", "atLeast", "exactly", "multiple"], description: "目标行距规则；1.5 倍行距使用 oneAndHalf。" },
     spaceBefore: { type: "number", description: "目标段前（磅）。" },
     spaceAfter: { type: "number", description: "目标段后（磅）。" },
+    characterUnitFirstLineIndent: { type: "number", description: "字符单位首行缩进。设置点值缩进前通常应传 0，避免 WPS 用字符单位覆盖点值。" },
+    characterUnitLeftIndent: { type: "number", description: "字符单位左缩进。设置点值缩进前通常应传 0。" },
+    characterUnitRightIndent: { type: "number", description: "字符单位右缩进。设置点值缩进前通常应传 0。" },
     firstLineIndent: { type: "number", description: "目标首行缩进（磅）。" },
     leftIndent: { type: "number", description: "目标左缩进（磅）。" },
     rightIndent: { type: "number", description: "目标右缩进（磅）。" }
@@ -72,6 +75,8 @@
     const legacyHandler = legacy.handler;
     registry.registerTool({
       ...legacy,
+      origin: "writer-format-guard",
+      replaces: legacy.origin || "legacy",
       __lingxiFormatGuardWrapped: true,
       description: [
         legacy.description || "设置段落格式。",

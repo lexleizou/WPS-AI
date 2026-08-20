@@ -2,6 +2,14 @@
 (function attachDocumentMutation(global) {
   "use strict";
 
+  // 所有 Writer 修改通过同一队列串行执行，避免两个异步备份/写入互相抢 currentTurn。
+  let mutationTail = Promise.resolve();
+  function withMutationLock(fn) {
+    const next = mutationTail.then(fn, fn);
+    mutationTail = next.catch(() => {});
+    return next;
+  }
+
   function pathsEqual(history, a, b) {
     if (!a || !b) return false;
     try { return history?.pathsEqual ? history.pathsEqual(a, b) : String(a) === String(b); }
@@ -14,23 +22,33 @@
 
   function assessResult(value) {
     const issues = [];
-    if (value && typeof value === "object") {
-      if (value.ok === false) issues.push(issue("ok", value.error || "工具返回 ok=false"));
-      if (value.partialFailure === true) issues.push(issue("partialFailure", "工具报告部分失败"));
-      if (typeof value.failed === "number" && value.failed > 0) issues.push(issue("failed", value.failed));
-      if (Array.isArray(value.failed) && value.failed.length) issues.push(issue("failed", value.failed.length));
-      ["failedCells", "failedParagraphs", "failures"].forEach((key) => {
-        if (Array.isArray(value[key]) && value[key].length) issues.push(issue(key, value[key].length));
-      });
-      if (value.verification && value.verification.ok !== true) {
-        issues.push(issue("verification", value.verification.error || "写后验证未通过"));
-        ["failures", "issues", "failedCells", "failedParagraphs"].forEach((key) => {
-          if (Array.isArray(value.verification[key]) && value.verification[key].length) {
-            issues.push(issue(`verification.${key}`, value.verification[key].length));
-          }
-        });
-      }
+    const seen = new Set();
+    function add(label, detail) {
+      const key = `${label}:${detail}`;
+      if (!seen.has(key)) { seen.add(key); issues.push(issue(label, detail)); }
     }
+    function scan(node, path, depth) {
+      if (!node || typeof node !== "object" || depth > 4) return;
+      if (node.ok === false) add(`${path}.ok`, node.error || "工具返回 ok=false");
+      if (node.applied === false) add(`${path}.applied`, node.error || "工具报告 applied=false");
+      if (node.partialFailure === true) add(`${path}.partialFailure`, "工具报告部分失败");
+      if (["failed", "partial", "error"].includes(String(node.status || "").toLowerCase())) add(`${path}.status`, node.status);
+      Object.entries(node).forEach(([key, child]) => {
+        const childPath = `${path}.${key}`;
+        if (/^(failed|failure|failures|failedCount|failureCount|failedCells|failedParagraphs)$/i.test(key)) {
+          if (typeof child === "number" && child > 0) add(childPath, child);
+          else if (Array.isArray(child) && child.length) add(childPath, child.length);
+        }
+        if (key === "verification" && child && typeof child === "object" && child.ok !== true) {
+          add(childPath, child.error || "写后验证未通过");
+        }
+        if (["verification", "levels", "results", "items", "details"].includes(key)) {
+          if (Array.isArray(child)) child.forEach((item, index) => scan(item, `${childPath}[${index}]`, depth + 1));
+          else scan(child, childPath, depth + 1);
+        }
+      });
+    }
+    scan(value, "result", 0);
     return issues.length
       ? { ok: false, code: "PARTIAL_MUTATION", issues }
       : { ok: true, code: "VERIFIED_OR_NO_FAILURE_SIGNAL", issues: [] };
@@ -46,7 +64,9 @@
       try { history.startTurn?.(label || `external:${toolName || "mutation"}`); }
       catch (e) { return { ok: false, code: "TURN_START_FAILED", error: `TURN_START_FAILED: ${e?.message || e}` }; }
     }
-    if (history.isCurrentTurnBlocked?.()) {
+    const turnId = history.getCurrentTurnId?.() || null;
+    if (!turnId) return { ok: false, code: "TURN_START_FAILED", error: "TURN_START_FAILED: 未取得 turnId。" };
+    if (history.isTurnBlocked?.(turnId) || history.isCurrentTurnBlocked?.()) {
       return { ok: false, code: "TURN_MUTATION_BLOCKED", error: "TURN_MUTATION_BLOCKED: 本轮已失败并进入回滚状态。" };
     }
     const docPathBefore = backup.getCurrentDocPath?.() || null;
@@ -54,11 +74,14 @@
       return { ok: false, code: "DOCUMENT_NOT_SAVED", error: "DOCUMENT_NOT_SAVED: 当前文档尚未保存到磁盘。" };
     }
     let backupInfo = null;
-    try { backupInfo = await history.ensureBackupForTurn?.(); }
+    try { backupInfo = await history.ensureBackupForTurn?.(turnId); }
     catch (e) {
       return { ok: false, code: "BACKUP_REQUIRED", error: `BACKUP_REQUIRED: ${e?.message || e}` };
     }
-    const backupError = history.getTurnBackupError?.();
+    if (history.getCurrentTurnId?.() !== turnId) {
+      return { ok: false, code: "TURN_CHANGED_DURING_BACKUP", error: "TURN_CHANGED_DURING_BACKUP: 备份期间活动 turn 发生变化。" };
+    }
+    const backupError = history.getTurnBackupError?.(turnId);
     if (backupError || !backupInfo?.backupPath) {
       return {
         ok: false,
@@ -77,28 +100,58 @@
     }
     return {
       ok: true,
-      turnId: history.getCurrentTurnId?.() || null,
+      turnId,
       docId: backupInfo.docId || activeDocId || null,
       docPath: backupInfo.docPath || docPathAfter,
       backupPath: backupInfo.backupPath
     };
   }
 
-  async function rollbackCurrentTurn(reason) {
+  function validateTransaction(transaction) {
     const history = global.WpsAiHistory;
     const backup = global.WpsAiBackup;
-    const turn = history?.getCurrentTurn?.() || null;
-    try { history?.markCurrentTurnFailed?.(reason || "修改失败"); } catch (e) {}
-    if (!turn?.backup?.backupPath || !(turn.backup.docPath || turn.docPath)) {
-      return { ok: false, error: "ROLLBACK_UNAVAILABLE: 当前 turn 没有可用备份。" };
+    if (!transaction?.turnId || history?.getCurrentTurnId?.() !== transaction.turnId) {
+      return { ok: false, code: "TURN_CHANGED_DURING_MUTATION", error: "TURN_CHANGED_DURING_MUTATION: 活动 turn 已变化。" };
+    }
+    const currentPath = backup?.getCurrentDocPath?.() || null;
+    if (!pathsEqual(history, currentPath, transaction.docPath)) {
+      return { ok: false, code: "DOCUMENT_CHANGED_DURING_MUTATION", error: "DOCUMENT_CHANGED_DURING_MUTATION: 活动文档已变化。" };
+    }
+    let currentDocId = null;
+    try { currentDocId = backup?.readDocId?.() || null; } catch (e) {}
+    if (transaction.docId && currentDocId && String(transaction.docId) !== String(currentDocId)) {
+      return { ok: false, code: "DOCUMENT_CHANGED_DURING_MUTATION", error: "DOCUMENT_CHANGED_DURING_MUTATION: 文档身份已变化。" };
+    }
+    return { ok: true };
+  }
+
+  async function rollbackTransaction(transaction, reason) {
+    const history = global.WpsAiHistory;
+    const backup = global.WpsAiBackup;
+    const turn = history?.getTurn?.(transaction?.turnId) || null;
+    try {
+      if (typeof history?.markTurnFailed === "function") history.markTurnFailed(transaction?.turnId, reason || "修改失败");
+      else if (history?.getCurrentTurnId?.() === transaction?.turnId) history?.markCurrentTurnFailed?.(reason || "修改失败");
+    } catch (e) {}
+    const backupPath = transaction?.backupPath || turn?.backup?.backupPath;
+    const docPath = transaction?.docPath || turn?.backup?.docPath || turn?.docPath;
+    if (!backupPath || !docPath) {
+      return { ok: false, error: "ROLLBACK_UNAVAILABLE: 该事务没有可用备份。" };
+    }
+    const activePath = backup?.getCurrentDocPath?.() || null;
+    if (!pathsEqual(history, activePath, docPath)) {
+      const activated = backup?.activateDocumentByPath?.(docPath) === true;
+      if (!activated || !pathsEqual(history, backup?.getCurrentDocPath?.(), docPath)) {
+        return {
+          ok: false,
+          deferred: true,
+          error: "ROLLBACK_DEFERRED: 目标文档当前不是活动文档，未对其他文档执行 Undo 或磁盘覆盖；备份已保留。"
+        };
+      }
     }
     try { backup?.endUndoGroup?.(); } catch (e) {}
     try {
-      const result = await backup.restoreFromBackup(
-        turn.backup.backupPath,
-        turn.backup.docPath || turn.docPath,
-        { tryUndo: true, undoSteps: 1 }
-      );
+      const result = await backup.restoreFromBackup(backupPath, docPath, { tryUndo: true, undoSteps: 1 });
       if (result?.ok) return result;
       return { ok: false, error: result?.error || "回滚失败" };
     } catch (e) {
@@ -106,41 +159,68 @@
     }
   }
 
+  async function rollbackCurrentTurn(reason) {
+    const history = global.WpsAiHistory;
+    const turn = history?.getCurrentTurn?.() || null;
+    return rollbackTransaction(turn ? {
+      turnId: turn.id,
+      docId: turn.backup?.docId || turn.docId || null,
+      docPath: turn.backup?.docPath || turn.docPath || null,
+      backupPath: turn.backup?.backupPath || null
+    } : null, reason);
+  }
+
   async function run({ label, toolName, args, mutate, verify, forceNewTurn = false } = {}) {
     if (typeof mutate !== "function") {
       return { ok: false, code: "MUTATE_REQUIRED", error: "MUTATE_REQUIRED: mutate 必须是函数。" };
     }
-    const prepared = await prepare({ label, toolName, forceNewTurn });
-    if (!prepared.ok) return prepared;
-    let value;
-    try {
-      value = await mutate(args || {});
-    } catch (e) {
-      const error = e?.message || String(e);
-      const rollback = await rollbackCurrentTurn(error);
-      return { ok: false, code: "MUTATION_THROWN", error, rollback };
-    }
-    let assessment = assessResult(value);
-    if (assessment.ok && typeof verify === "function") {
+    return withMutationLock(async () => {
+      const prepared = await prepare({ label, toolName, forceNewTurn });
+      if (!prepared.ok) return prepared;
+      const beforeCheck = validateTransaction(prepared);
+      if (!beforeCheck.ok) return beforeCheck;
+      let value;
       try {
-        const verification = await verify(value, prepared);
-        assessment = assessResult({ verification });
+        value = await mutate(args || {}, prepared);
       } catch (e) {
-        assessment = { ok: false, code: "VERIFICATION_THROWN", issues: [issue("verification", e?.message || e)] };
+        const error = e?.message || String(e);
+        const rollback = await rollbackTransaction(prepared, error);
+        return { ok: false, code: "MUTATION_THROWN", error, rollback, prepared };
       }
-    }
-    if (!assessment.ok) {
-      const error = assessment.issues.map((item) => `${item.label}:${item.detail}`).join("；");
-      const rollback = await rollbackCurrentTurn(error);
-      return { ok: false, code: assessment.code || "PARTIAL_MUTATION", error, issues: assessment.issues, rollback };
-    }
-    return { ok: true, value, prepared, verification: assessment };
+      const afterCheck = validateTransaction(prepared);
+      if (!afterCheck.ok) {
+        const rollback = await rollbackTransaction(prepared, afterCheck.error);
+        return Object.assign({}, afterCheck, { rollback, prepared });
+      }
+      let assessment = assessResult(value);
+      if (assessment.ok && typeof verify === "function") {
+        try {
+          const verification = await verify(value, prepared);
+          assessment = assessResult({ verification });
+        } catch (e) {
+          assessment = { ok: false, code: "VERIFICATION_THROWN", issues: [issue("verification", e?.message || e)] };
+        }
+      }
+      if (!assessment.ok) {
+        const error = assessment.issues.map((item) => `${item.label}:${item.detail}`).join("；");
+        const rollback = await rollbackTransaction(prepared, error);
+        return { ok: false, code: assessment.code || "PARTIAL_MUTATION", error, issues: assessment.issues, rollback, prepared };
+      }
+      const finalCheck = validateTransaction(prepared);
+      if (!finalCheck.ok) {
+        const rollback = await rollbackTransaction(prepared, finalCheck.error);
+        return Object.assign({}, finalCheck, { rollback, prepared });
+      }
+      return { ok: true, value, prepared, verification: assessment };
+    });
   }
 
   global.WpsAiDocumentMutation = {
     prepare,
     assessResult,
     run,
+    validateTransaction,
+    rollbackTransaction,
     rollbackCurrentTurn
   };
 })(window);
