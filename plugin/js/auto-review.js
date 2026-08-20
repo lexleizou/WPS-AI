@@ -108,6 +108,7 @@
     const dir = String(dirData.dir).replace(/[\\/]+$/, "");
     const requestedPath = `${dir}/turn-${Date.now()}.pdf`;
     const exported = await writer.exportToPdf(requestedPath);
+    if (exported?.applied === false) throw new Error(exported.error || "WPS 未完成 PDF 导出");
     // macOS WPS 的 ExportAsFixedFormat 可能在 JSAPI 返回后才真正落盘；同时尊重宿主返回的实际路径。
     const pdfPath = String(exported?.path || requestedPath);
     const deadline = Date.now() + 10000;
@@ -125,8 +126,9 @@
         return base64ToBytes(fileData.base64);
       }
       lastError = fileData.error || `HTTP ${fileResp.status}`;
-      const retryable = !fileResp.ok && (fileResp.status === 404 || fileResp.status === 400)
-        && /不存在|找不到|not found|no such file|enoent|空文件|empty/i.test(String(lastError));
+      const emptyFile = fileResp.ok && fileData.ok && (!fileData.base64 || Number(fileData.size || 0) <= 0);
+      const retryable = emptyFile || (!fileResp.ok && (fileResp.status === 404 || fileResp.status === 400)
+        && /不存在|找不到|not found|no such file|enoent|空文件|empty/i.test(String(lastError)));
       if (!retryable) throw new Error(`读取导出的 PDF 失败：${lastError}`);
       await sleep(Math.min(1000, 120 + attempt * 120));
     }

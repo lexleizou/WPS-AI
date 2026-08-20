@@ -22,6 +22,9 @@ test("visual review waits for the PDF file and uses the exporter returned path",
     if (loadAttempts === 1) {
       return { ok: false, status: 404, json: async () => ({ error: `文件不存在: ${actualPath}` }) };
     }
+    if (loadAttempts === 2) {
+      return { ok: true, status: 200, json: async () => ({ ok: true, size: 0, base64: "" }) };
+    }
     return {
       ok: true,
       status: 200,
@@ -37,6 +40,6 @@ test("visual review waits for the PDF file and uses the exporter returned path",
   const writer = { exportToPdf: async () => ({ path: actualPath, applied: true }) };
   const bytes = await context.WpsAiAutoReview._internal.exportAndLoadPdf(writer);
   assert.equal(Buffer.from(bytes).toString(), "%PDF");
-  assert.equal(loadAttempts, 2);
-  assert.equal(calls.length, 3);
+  assert.equal(loadAttempts, 3);
+  assert.equal(calls.length, 4);
 });
