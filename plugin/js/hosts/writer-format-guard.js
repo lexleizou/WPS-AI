@@ -146,11 +146,14 @@
   function paragraphSnapshot(paragraph, index) {
     const range = paragraph?.Range;
     const font = range?.Font;
-    const paragraphFormat = range?.ParagraphFormat;
+    // WPS TOC 域结果上的 Range.ParagraphFormat 可能只在内存中变化，保存后恢复；
+    // Paragraph.Format 才是可持久化的段落格式对象（与 Sally 的成功写入路径一致）。
+    const paragraphFormat = paragraph?.Format || range?.ParagraphFormat;
     return {
       index,
       anchor: `§${index}`,
       range,
+      paragraphFormat,
       inTable: isInTable(range),
       identity: fnv1a([index, safeRead(range, "Start"), safeRead(range, "End"), normalizeText(range?.Text)].join("|")),
       text: normalizeText(range?.Text).replace(/[\r\n\v]+/g, " ").trim().slice(0, 120),
@@ -269,7 +272,7 @@
   function applyDiff(snapshot, requirements, diff) {
     const range = snapshot.range;
     const font = range?.Font;
-    const paragraphFormat = range?.ParagraphFormat;
+    const paragraphFormat = snapshot.paragraphFormat || range?.ParagraphFormat;
     const applied = [], failed = [];
     function write(target, key, value, label) {
       const result = safeWrite(target, key, value);

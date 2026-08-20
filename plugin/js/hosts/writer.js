@@ -1896,56 +1896,71 @@
   const numOr = (v) => (typeof v === "number" && isFinite(v)) ? v : null;
 
   async function formatParagraph(opts = {}) {
-    let pf;
+    const formats = [];
     if (opts.scope === "document") {
       const d = await ensureDocument();
-      pf = d.Content.ParagraphFormat;
+      const paragraphs = d.Content?.Paragraphs || d.Paragraphs;
+      const count = Number(paragraphs?.Count) || 0;
+      for (let i = 1; i <= count; i += 1) {
+        const paragraph = paragraphs.Item(i);
+        const format = paragraph?.Format || paragraph?.Range?.ParagraphFormat;
+        if (format) formats.push({ index: i, format });
+      }
     } else {
       const sel = await getSelection();
       if (!sel) throw new Error("未获取到选区。");
-      // 选区防护：折叠选区（纯光标）上设段落格式会悄悄作用于光标所在段，先拦住让用户先选中
       const selRange = typeof sel.Range === "function" ? await sel.Range() : sel.Range;
       if (selRange && selRange.Start === selRange.End) {
         throw new Error("当前没有选中内容（只有一个光标）。请先在文档里选中要设置格式的段落，再调用本工具。");
       }
-      pf = sel.ParagraphFormat;
-    }
-    // 写入后立即读回比对：COM 静默失败很常见，失败字段收集进 failures 如实上报，不再空吞
-    const failures = [];
-    const finalExpectations = {};
-    const applyProp = (field, value) => {
-      try {
-        finalExpectations[field] = Number(value);
-        pf[field] = value;
-        const actual = Number(pf[field]);
-        if (!Number.isFinite(actual) || Math.abs(actual - Number(value)) > 0.01) failures.push({ field, expected: value, actual });
-      } catch (e) {
-        failures.push({ field, expected: value, error: String((e && e.message) || e) });
+      // 关键：WPS 的 Range/Selection.ParagraphFormat 在 TOC 域结果上可能只是瞬时代理，
+      // 读回会变但保存时丢失。逐个 Paragraph.Format 写入才会进入文档模型并持久化。
+      const paragraphs = selRange?.Paragraphs || sel.Paragraphs;
+      const count = Number(paragraphs?.Count) || 0;
+      for (let i = 1; i <= count; i += 1) {
+        const paragraph = paragraphs.Item(i);
+        const format = paragraph?.Format || paragraph?.Range?.ParagraphFormat;
+        if (format) formats.push({ index: i, format });
       }
-    };
-    if (opts.alignment && WD_ALIGN[opts.alignment] != null) applyProp("Alignment", WD_ALIGN[opts.alignment]);
-    // WPS 的字符单位缩进会覆盖点值。显式设置点值前先清对应字符单位，再写点值。
-    if (numOr(opts.characterUnitLeftIndent) != null || numOr(opts.leftIndent) != null) applyProp("CharacterUnitLeftIndent", numOr(opts.characterUnitLeftIndent) != null ? opts.characterUnitLeftIndent : 0);
-    if (numOr(opts.characterUnitRightIndent) != null || numOr(opts.rightIndent) != null) applyProp("CharacterUnitRightIndent", numOr(opts.characterUnitRightIndent) != null ? opts.characterUnitRightIndent : 0);
-    if (numOr(opts.characterUnitFirstLineIndent) != null || numOr(opts.firstLineIndent) != null) applyProp("CharacterUnitFirstLineIndent", numOr(opts.characterUnitFirstLineIndent) != null ? opts.characterUnitFirstLineIndent : 0);
-    if (numOr(opts.leftIndent) != null) applyProp("LeftIndent", opts.leftIndent);
-    if (numOr(opts.rightIndent) != null) applyProp("RightIndent", opts.rightIndent);
-    if (numOr(opts.firstLineIndent) != null) applyProp("FirstLineIndent", opts.firstLineIndent);
-    if (numOr(opts.spaceBefore) != null) applyProp("SpaceBefore", opts.spaceBefore);
-    if (numOr(opts.spaceAfter) != null) applyProp("SpaceAfter", opts.spaceAfter);
-    const WD_LS = { single: 0, oneAndHalf: 1, double: 2, atLeast: 3, exactly: 4, multiple: 5 };
-    if (opts.lineSpacingRule && WD_LS[opts.lineSpacingRule] != null) {
-      applyProp("LineSpacingRule", WD_LS[opts.lineSpacingRule]);
-      if (numOr(opts.lineSpacing) != null) applyProp("LineSpacing", opts.lineSpacing);
-    } else if (numOr(opts.lineSpacing) != null) {
-      applyProp("LineSpacing", opts.lineSpacing);
+      if (!formats.length && sel.ParagraphFormat) formats.push({ index: 1, format: sel.ParagraphFormat });
     }
-    Object.entries(finalExpectations).forEach(([field, expected]) => {
-      if (failures.some((item) => item.field === field)) return;
-      const actual = Number(pf[field]);
-      if (!Number.isFinite(actual) || Math.abs(actual - expected) > 0.01) failures.push({ field, expected, actual, phase: "finalReadback" });
-    });
-    return { scope: opts.scope || "selection", applied: failures.length === 0, failures };
+    if (!formats.length) throw new Error("未获取到选区内的段落格式对象。");
+
+    const failures = [];
+    const WD_LS = { single: 0, oneAndHalf: 1, double: 2, atLeast: 3, exactly: 4, multiple: 5 };
+    for (const entry of formats) {
+      const pf = entry.format;
+      const finalExpectations = {};
+      const applyProp = (field, value) => {
+        try {
+          finalExpectations[field] = Number(value);
+          pf[field] = value;
+          const actual = Number(pf[field]);
+          if (!Number.isFinite(actual) || Math.abs(actual - Number(value)) > 0.01) failures.push({ paragraph: entry.index, field, expected: value, actual });
+        } catch (e) {
+          failures.push({ paragraph: entry.index, field, expected: value, error: String((e && e.message) || e) });
+        }
+      };
+      if (opts.alignment && WD_ALIGN[opts.alignment] != null) applyProp("Alignment", WD_ALIGN[opts.alignment]);
+      if (numOr(opts.characterUnitLeftIndent) != null || numOr(opts.leftIndent) != null) applyProp("CharacterUnitLeftIndent", numOr(opts.characterUnitLeftIndent) != null ? opts.characterUnitLeftIndent : 0);
+      if (numOr(opts.characterUnitRightIndent) != null || numOr(opts.rightIndent) != null) applyProp("CharacterUnitRightIndent", numOr(opts.characterUnitRightIndent) != null ? opts.characterUnitRightIndent : 0);
+      if (numOr(opts.characterUnitFirstLineIndent) != null || numOr(opts.firstLineIndent) != null) applyProp("CharacterUnitFirstLineIndent", numOr(opts.characterUnitFirstLineIndent) != null ? opts.characterUnitFirstLineIndent : 0);
+      if (numOr(opts.leftIndent) != null) applyProp("LeftIndent", opts.leftIndent);
+      if (numOr(opts.rightIndent) != null) applyProp("RightIndent", opts.rightIndent);
+      if (numOr(opts.firstLineIndent) != null) applyProp("FirstLineIndent", opts.firstLineIndent);
+      if (numOr(opts.spaceBefore) != null) applyProp("SpaceBefore", opts.spaceBefore);
+      if (numOr(opts.spaceAfter) != null) applyProp("SpaceAfter", opts.spaceAfter);
+      if (opts.lineSpacingRule && WD_LS[opts.lineSpacingRule] != null) {
+        applyProp("LineSpacingRule", WD_LS[opts.lineSpacingRule]);
+        if (numOr(opts.lineSpacing) != null) applyProp("LineSpacing", opts.lineSpacing);
+      } else if (numOr(opts.lineSpacing) != null) applyProp("LineSpacing", opts.lineSpacing);
+      Object.entries(finalExpectations).forEach(([field, expected]) => {
+        if (failures.some((item) => item.paragraph === entry.index && item.field === field)) return;
+        const actual = Number(pf[field]);
+        if (!Number.isFinite(actual) || Math.abs(actual - expected) > 0.01) failures.push({ paragraph: entry.index, field, expected, actual, phase: "finalReadback" });
+      });
+    }
+    return { scope: opts.scope || "selection", affectedParagraphs: formats.length, applied: failures.length === 0, failures };
   }
 
   // ---- 制表位（TabStops）：目录页码对齐、悬挂缩进对齐等都靠它 ----
@@ -2052,11 +2067,6 @@
     if (numOr(para.spaceBefore) != null) applyProp(pf, "SpaceBefore", para.spaceBefore);
     if (numOr(para.spaceAfter) != null) applyProp(pf, "SpaceAfter", para.spaceAfter);
     if (numOr(para.lineSpacing) != null) applyProp(pf, "LineSpacing", para.lineSpacing);
-    Object.entries(paragraphExpectations).forEach(([field, expected]) => {
-      if (failures.some((item) => item.field === field)) return;
-      const actual = Number(pf[field]);
-      if (!Number.isFinite(actual) || Math.abs(actual - expected) > 0.01) failures.push({ field, expected, actual, phase: "finalReadback" });
-    });
     const font = opts.font || {};
     if (font.name) {
       try {
@@ -2073,6 +2083,32 @@
     let tabs;
     if (Array.isArray(opts.tabs)) {
       tabs = writeTabStopsTo(pf, opts.tabs, failures, "tab");
+    }
+    // 某些 WPS 版本返回 Style.ParagraphFormat 的可写副本；修改后必须整体赋回 Style 才会持久化。
+    try { style.ParagraphFormat = pf; } catch (e) { /* 支持 live object 的版本无需赋回 */ }
+    let persistedPf = pf;
+    try { persistedPf = style.ParagraphFormat || pf; } catch (e) {}
+    Object.entries(paragraphExpectations).forEach(([field, expected]) => {
+      if (failures.some((item) => item.field === field)) return;
+      const actual = Number(persistedPf[field]);
+      if (!Number.isFinite(actual) || Math.abs(actual - expected) > 0.01) failures.push({ field, expected, actual, phase: "styleFinalReadback" });
+    });
+    if (Array.isArray(opts.tabs)) {
+      tabs = readTabStopsOf(persistedPf);
+      const expectedTabs = opts.tabs.map((tab) => ({
+        position: Number(tab.position),
+        alignment: tab.alignment || "left",
+        leader: tab.leader === "none" ? "spaces" : (tab.leader || "spaces")
+      }));
+      const tabsPersisted = tabs.length === expectedTabs.length && tabs.every((tab, index) => {
+        const expected = expectedTabs[index];
+        return Math.abs(Number(tab.position) - expected.position) <= 0.05
+          && tab.alignment === expected.alignment
+          && tab.leader === expected.leader;
+      });
+      if (!tabsPersisted && !failures.some((item) => String(item.field || "").startsWith("tab"))) {
+        failures.push({ field: "tabs", expected: expectedTabs, actual: tabs, phase: "styleFinalReadback" });
+      }
     }
     return { style: String(style.NameLocal || style.Name || opts.name || opts.builtinId), applied: failures.length === 0, tabs, failures };
   }

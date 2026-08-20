@@ -46,9 +46,10 @@ test("full format audit and apply verifies the paragraph object after all writes
     End: 8,
     Text: "目录条目\r",
     Font: { Name: "宋体", NameFarEast: "宋体", NameAscii: "宋体", NameOther: "宋体", Size: 10.5 },
-    ParagraphFormat: paragraphFormat
+    // Simulate the transient Range.ParagraphFormat clone that WPS discards on save.
+    ParagraphFormat: { ...state }
   };
-  const paragraph = { Range: range };
+  const paragraph = { Range: range, Format: paragraphFormat };
   const paragraphs = { Count: 1, Item: () => paragraph };
   const document = {
     Name: "toc.docx",
