@@ -66,6 +66,18 @@ test("partial mutation result rolls back the current turn", async () => {
   assert.equal(result.rollback.ok, true);
 });
 
+test("mutation assessment rejects applied=false and nested level failures", () => {
+  const mutation = loadMutation();
+  const appliedFalse = mutation.assessResult({ applied: false, error: "not applied" });
+  assert.equal(appliedFalse.ok, false);
+  const nestedFailure = mutation.assessResult({
+    applied: false,
+    levels: [{ level: 2, failures: [{ field: "LeftIndent" }] }]
+  });
+  assert.equal(nestedFailure.ok, false);
+  assert.ok(nestedFailure.issues.some((item) => /levels/.test(item.label)));
+});
+
 test("prepare refuses a new turn created while the backup is pending", async () => {
   let currentTurnId = "t1";
   const mutation = loadMutation({
@@ -189,6 +201,34 @@ test("backup failure closes the UndoRecord it opened", async () => {
   assert.match(result.error, /Save 失败/);
   assert.equal(starts, 1);
   assert.equal(ends, 1);
+});
+
+test("backup failure closes the UndoRecord on its owner app after an app switch", async () => {
+  let ownerEnds = 0;
+  let otherEnds = 0;
+  const makeDoc = (name) => ({
+    FullName: `/tmp/${name}.docx`, Path: "/tmp", Name: `${name}.docx`, Save: () => {}
+  });
+  const ownerApp = {
+    UndoRecord: { StartCustomRecord: () => {}, EndCustomRecord: () => { ownerEnds += 1; } },
+    ActiveDocument: makeDoc("a")
+  };
+  const otherApp = {
+    UndoRecord: { StartCustomRecord: () => {}, EndCustomRecord: () => { otherEnds += 1; } },
+    ActiveDocument: makeDoc("b")
+  };
+  let currentApp = ownerApp;
+  const context = loadIife(backupFile, {
+    wps: { WpsApplication: () => currentApp },
+    fetch: async () => {
+      currentApp = otherApp;
+      return { ok: false, status: 500, text: async () => "failed" };
+    }
+  });
+  const result = await context.WpsAiBackup.captureCurrentDoc();
+  assert.equal(result.ok, false);
+  assert.equal(ownerEnds, 1);
+  assert.equal(otherEnds, 0);
 });
 
 test("successful mutation returns its value without rollback", async () => {

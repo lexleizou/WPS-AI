@@ -1806,8 +1806,8 @@
         try { doc.RejectAllRevisions(); } catch (e) { try { doc.Revisions.RejectAll(); } catch (e2) {} }
       }
       const after = countOf();
-      if (before > 0 && after >= before) {
-        throw new Error(`未能${action === "accept_all" ? "接受" : "回撤"}修订（仍有 ${after} 条）——文档可能仍被保护，或该 WPS 版本方法不同`);
+      if (after !== 0) {
+        throw new Error(`未能${action === "accept_all" ? "接受" : "回撤"}全部修订（操作前 ${before} 条，仍有 ${after} 条）——已触发整轮回滚`);
       }
       // 接受/拒绝后 AcceptAllRevisions 已把修订从模型里清掉，但 WPS 常「懒重绘」——右侧修订标记/气泡
       // 要等下次滚动/交互才消失（用户实测 5-15s）。这里强制刷一次屏幕逼它立即重绘。COM 在不同 WPS
@@ -1818,7 +1818,14 @@
       throw new Error(`未知修订操作：${action}`);
     }
     let trackOn = false; try { trackOn = !!doc.TrackRevisions; } catch (e) {}
-    return { action, trackOn, applied: true };
+    const expected = action === "enable_track";
+    const applied = trackOn === expected;
+    return {
+      action,
+      trackOn,
+      applied,
+      failures: applied ? [] : [{ field: "TrackRevisions", expected, actual: trackOn }]
+    };
   }
 
   async function exportToPdf(path) {

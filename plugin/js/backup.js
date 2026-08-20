@@ -198,16 +198,18 @@
 
   // ---- UndoRecord helpers (MSO Word 风格,WPS Writer 也支持;ET/WPP 不支持就 silent fail) ----
 
-  // 标记一个"我们启动了 UndoRecord"的全局位,防止重复 End
+  // UndoRecord 必须绑定启动它的原生 app/doc；不能在用户切换宿主或文档后对“当前 app”盲目 End。
   let undoRecordOpen = false;
+  let undoRecordOwner = null;
 
-  function tryStartUndoGroup(app, name) {
-    if (!app) return false;
+  function tryStartUndoGroup(app, name, owner = {}) {
+    if (!app || undoRecordOpen) return false;
     try {
       const ur = app.UndoRecord;
       if (ur && typeof ur.StartCustomRecord === "function") {
         ur.StartCustomRecord(name || "灵犀AI 操作");
         undoRecordOpen = true;
+        undoRecordOwner = { app, docPath: owner.docPath || null, docId: owner.docId || null };
         return true;
       }
     } catch (e) { /* 不支持就算了 */ }
@@ -215,15 +217,18 @@
   }
 
   function tryEndUndoGroup(app) {
-    if (!app) return false;
+    if (!undoRecordOpen) return false;
+    const ownerApp = undoRecordOwner?.app || app;
+    if (!ownerApp) return false;
     try {
-      const ur = app.UndoRecord;
+      const ur = ownerApp.UndoRecord;
       if (ur && typeof ur.EndCustomRecord === "function") {
         ur.EndCustomRecord();
         undoRecordOpen = false;
+        undoRecordOwner = null;
         return true;
       }
-    } catch (e) { /* */ }
+    } catch (e) { /* 保留 owner/open 状态，禁止把关闭失败伪装成成功 */ }
     return false;
   }
 
@@ -252,8 +257,7 @@
   // 外部调用:turn 结束时把 UndoRecord 关掉,这样下一次 Undo 一次性撤回整组
   function endUndoGroup() {
     if (!undoRecordOpen) return false;
-    const { app } = getActiveDoc();
-    return tryEndUndoGroup(app);
+    return tryEndUndoGroup(undoRecordOwner?.app || null);
   }
 
   // ---- snapshot ----
@@ -303,11 +307,11 @@
 
     // 2. 开 UndoRecord(在 Save 之前,这样 Save 不会进 undo 组里 — 不影响)
     //    这一步是"内容层回退"的关键。开成功就标记 undoGroup=true,回退时优先走 Undo。
-    const undoGroup = tryStartUndoGroup(app, `灵犀AI - ${new Date().toISOString()}`);
+    const undoGroup = tryStartUndoGroup(app, `灵犀AI - ${new Date().toISOString()}`, { docPath });
     const failCapture = (error) => {
       // 备份没有成立时不能遗留打开的 UndoRecord，否则用户后续手工编辑会被错误并入 AI 组。
-      if (undoGroup) tryEndUndoGroup(app);
-      return { ok: false, error };
+      const closed = !undoGroup || tryEndUndoGroup(app);
+      return { ok: false, error: closed ? error : `${error}；UNDO_RECORD_CLOSE_FAILED: 无法关闭该文档的 UndoRecord` };
     };
 
     // 3. 补/取文档身份 UUID（写进 CustomDocumentProperties）。
