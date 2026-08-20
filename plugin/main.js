@@ -133,6 +133,7 @@
     "js/doc-lock.js",   // AI 工作期间锁住文档不让用户编辑
     "js/backup.js",     // 文档级备份（per-turn 快照恢复），被 history.js 使用
     "js/history.js",
+    "js/document-mutation.js", // Writer 修改协调：严格备份、部分失败熔断与整轮回滚
     "js/material-library.js", // 生图素材库：记录 generate_image 历史，供 ribbon「素材库」打开
     "js/material-tagger.js", // 素材内容打标（LLM，文本/视觉），依赖 material-library + providers
     "js/local-matting.js", // 本地离线抠图（onnxruntime-web + isnet 模型），发丝级软 alpha，无需联网/供应商

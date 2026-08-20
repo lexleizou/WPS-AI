@@ -276,6 +276,11 @@
     // 2. 开 UndoRecord(在 Save 之前,这样 Save 不会进 undo 组里 — 不影响)
     //    这一步是"内容层回退"的关键。开成功就标记 undoGroup=true,回退时优先走 Undo。
     const undoGroup = tryStartUndoGroup(app, `灵犀AI - ${new Date().toISOString()}`);
+    const failCapture = (error) => {
+      // 备份没有成立时不能遗留打开的 UndoRecord，否则用户后续手工编辑会被错误并入 AI 组。
+      if (undoGroup) tryEndUndoGroup(app);
+      return { ok: false, error };
+    };
 
     // 3. 补/取文档身份 UUID（写进 CustomDocumentProperties）。
     //    在 Save 之前 assign，Save 会顺手把 property 持久化到 .docx / .xlsx / .pptx 里，
@@ -286,7 +291,7 @@
     try {
       if (typeof doc.Save === "function") doc.Save();
     } catch (e) {
-      return { ok: false, error: `Save 失败：${e?.message || e}` };
+      return failCapture(`Save 失败：${e?.message || e}`);
     }
 
     // 5. POST 给代理做实际文件复制(作为 Undo 失效场景的兜底)
@@ -298,9 +303,10 @@
       });
       if (!resp.ok) {
         const text = await resp.text().catch(() => "");
-        return { ok: false, error: `代理返回 ${resp.status}：${text.slice(0, 200)}` };
+        return failCapture(`代理返回 ${resp.status}：${text.slice(0, 200)}`);
       }
       const json = await resp.json();
+      if (!json?.backupPath) return failCapture("代理未返回 backupPath");
       return {
         ok: true,
         docPath,
@@ -312,7 +318,7 @@
         undoGroup
       };
     } catch (e) {
-      return { ok: false, error: `代理连不上：${e?.message || e}` };
+      return failCapture(`代理连不上：${e?.message || e}`);
     }
   }
 

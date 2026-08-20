@@ -2223,7 +2223,17 @@
     if (!w || typeof w.manageRevisions !== "function") return;
     setReviseApplying(true);
     try {
-      const r = await w.manageRevisions(action);
+      const mutation = global.WpsAiDocumentMutation;
+      if (!mutation?.run) throw new Error("文档修改协调模块未加载，已拒绝批量处理修订。");
+      const outcome = await mutation.run({
+        label: action === "accept_all" ? "接受全部修订" : "回撤全部修订",
+        toolName: "wps_manage_revisions",
+        args: { action },
+        forceNewTurn: true,
+        mutate: async () => await w.manageRevisions(action)
+      });
+      if (!outcome.ok) throw new Error(outcome.error || "批量处理修订失败");
+      const r = outcome.value;
       const n = (r && typeof r.before === "number") ? r.before : null;
       showMessage(
         (action === "accept_all" ? "已接受全部修订" : "已全部回撤（拒绝所有修订）") + (n ? `（${n} 条）` : "") + "。",
@@ -2232,6 +2242,7 @@
     } catch (e) {
       showMessage((action === "accept_all" ? "接受修订失败：" : "回撤失败：") + (e?.message || e), "error");
     } finally {
+      try { global.WpsAiBackup?.endUndoGroup?.(); } catch (e) {}
       setReviseApplying(false);
       updateReviseActions();
     }
@@ -8285,24 +8296,27 @@
   async function recordPreviewModification({ turnLabel, toolName, params, modifyFn, summary }) {
     const history = global.WpsAiHistory;
     const snap = global.WpsAiSnapshot;
-    try { history?.startTurn?.(turnLabel); } catch (e) {}
-    try { await history?.ensureBackupForTurn?.(); } catch (e) {}
+    const mutation = global.WpsAiDocumentMutation;
+    if (!mutation?.run) throw new Error("文档修改协调模块未加载，已拒绝直接写入。");
 
     let target = null, before = null, captureAfterFn = null;
-    try {
-      const host = snap?.detectHost?.() || "wps";
-      const pre = await snap?.captureBefore?.(host, toolName, params);
-      target = pre?.target || null;
-      before = pre?.before || null;
-      captureAfterFn = pre?._captureAfter || null;
-    } catch (e) {}
-
-    let modErr = null;
-    try {
-      await modifyFn();
-    } catch (e) {
-      modErr = e;
-    }
+    const mutationResult = await mutation.run({
+      label: turnLabel,
+      toolName,
+      args: params,
+      forceNewTurn: true,
+      mutate: async () => {
+        try {
+          const host = snap?.detectHost?.() || "wps";
+          const pre = await snap?.captureBefore?.(host, toolName, params);
+          target = pre?.target || null;
+          before = pre?.before || null;
+          captureAfterFn = pre?._captureAfter || null;
+        } catch (e) {}
+        return await modifyFn();
+      }
+    });
+    const modErr = mutationResult.ok ? null : new Error(mutationResult.error || "修改失败");
 
     let after = null;
     try {
@@ -8321,6 +8335,7 @@
         ok: !modErr,
         resultSummary: summary || (modErr ? null : "弹窗替换成功"),
         error: modErr ? (modErr?.message || String(modErr)) : null,
+        rollback: mutationResult.rollback || null,
         docPath: global.WpsAiBackup?.getCurrentDocPath?.() || null,
         source: "preview-dialog"
       });
@@ -8337,7 +8352,7 @@
             type: "tool_result",
             name: toolName,
             result: modErr
-              ? { ok: false, error: modErr?.message || String(modErr) }
+              ? { ok: false, error: modErr?.message || String(modErr), rollback: mutationResult.rollback || null }
               : { ok: true, value: { summary: summary || `${turnLabel} 完成` } },
             ts: Date.now(),
             source: "preview-dialog"
@@ -11116,15 +11131,23 @@
     if (confirmBtn) confirmBtn.disabled = true;
     if (directBtn) directBtn.disabled = true;
     showMessage(i18nT("正在写回文档，请勿操作…"), "info", { autoHide: false });
-    let captured = false;
     try {
-      try { const snap = await global.WpsAiBackup?.captureCurrentDoc?.(); captured = !!(snap && snap.ok); } catch (e) {}
-      const res = await global.WpsAiHostWriter.replaceSectionsInPlace(ordered);
-      showMessage(
-        `已改写 ${res.replaced} 节${res.failed ? `，${res.failed} 节写回失败保留原文` : ""}。${captured ? "已生成备份，可撤销。" : ""}`,
-        res.failed ? "info" : "success", { duration: 8000 }
-      );
-      try { global.WpsAiLog?.log?.("long-rewrite:apply", { replaced: res.replaced, failed: res.failed, backup: captured }); } catch (e) {}
+      const mutation = global.WpsAiDocumentMutation;
+      if (!mutation?.run) throw new Error("文档修改协调模块未加载，已拒绝长文写回。");
+      const outcome = await mutation.run({
+        label: "长文改写写回",
+        toolName: "wps_long_rewrite_apply",
+        args: { sectionCount: ordered.length },
+        forceNewTurn: true,
+        mutate: async () => await global.WpsAiHostWriter.replaceSectionsInPlace(ordered)
+      });
+      if (!outcome.ok) {
+        const rollbackText = outcome.rollback?.ok ? "，本轮修改已回滚" : "";
+        throw new Error(`${outcome.error || "写回未通过验证"}${rollbackText}`);
+      }
+      const res = outcome.value || {};
+      showMessage(`已改写 ${res.replaced || 0} 节。已生成备份，可撤销。`, "success", { duration: 8000 });
+      try { global.WpsAiLog?.log?.("long-rewrite:apply", { replaced: res.replaced || 0, failed: 0, backup: true }); } catch (e) {}
       closeFormatPreviewModal();
     } catch (e) {
       showMessage(`写回失败：${e?.message || e}`, "error");
