@@ -810,6 +810,29 @@
     return app;
   }
 
+  function assertBoundDocumentActive(app) {
+    const bound = global.WpsAiDocumentMutation?.getBoundDocument?.() || null;
+    if (!bound) return true;
+    let activePath = "", boundPath = "";
+    try { activePath = String(app?.ActiveDocument?.FullName || ""); } catch (e) {}
+    try { boundPath = String(bound.FullName || ""); } catch (e) {}
+    const samePath = global.WpsAiHistory?.pathsEqual
+      ? global.WpsAiHistory.pathsEqual(activePath, boundPath)
+      : activePath === boundPath;
+    if (!activePath || !boundPath || !samePath) {
+      throw new Error("DOCUMENT_NOT_ACTIVE_FOR_SELECTION: 用户已切换文档，基于 Selection 的修改已取消；请回到原文档后重试。");
+    }
+    return true;
+  }
+
+  async function getBoundAwareSelection() {
+    const app = await getApp();
+    assertBoundDocumentActive(app);
+    const selection = app.Selection;
+    if (!selection) throw new Error("未获取到 Selection。");
+    return { app, selection };
+  }
+
   function collectionCount(collection) {
     if (!collection) return null;
     try {
@@ -1064,6 +1087,7 @@
     try { document?.Activate?.(); } catch (e) {}
     try { sel?.Range?.Select?.(); } catch (e) {}
     await shortDelay(120);
+    assertBoundDocumentActive(app);
     debugLog("app-state-after", {
       interactive: safeRead(app, "Interactive"),
       protectionType: safeRead(document, "ProtectionType"),
@@ -1122,6 +1146,7 @@
     if (!resp.ok || !payload.htmlPath) {
       throw new Error(payload.error || `image-html-file ${resp.status}`);
     }
+    assertBoundDocumentActive(app);
     const range = collapsedSelectionRange(sel);
     if (!range?.InsertFile) throw new Error("Range.InsertFile 不可用");
     range.InsertFile(payload.htmlPath);
@@ -1147,6 +1172,7 @@
     if (!resp.ok || !payload.rtfPath) {
       throw new Error(payload.error || `image-rtf-file ${resp.status}`);
     }
+    assertBoundDocumentActive(app);
     const range = collapsedSelectionRange(sel);
     if (!range?.InsertFile) throw new Error("Range.InsertFile 不可用");
     range.InsertFile(payload.rtfPath);
@@ -1172,6 +1198,7 @@
     if (!resp.ok || !payload.ok) {
       throw new Error(payload.error || `clipboard/image ${resp.status}`);
     }
+    assertBoundDocumentActive(app);
     const pasteRange = hintedInsertionRange(document) || documentSelectionRange(document, sel) || collapsedSelectionRange(sel) || documentEndRange(document);
     try { pasteRange?.Select?.(); } catch (e) {}
     if (typeof sel?.Paste === "function") {
@@ -1220,6 +1247,7 @@
 
     for (const [label, range] of ranges) {
       try {
+        assertBoundDocumentActive(app);
         const field = addIncludePictureField(document, range, fileName);
         try { field?.Update?.(); } catch (e) {}
         try { document?.Fields?.Update?.(); } catch (e) {}
@@ -1392,6 +1420,7 @@
         const before = imageCounts(document);
         debugLog("try", { strategy: strategy.name, before, fileName: shortPath(candidate) });
         try {
+          assertBoundDocumentActive(app);
           let shape = strategy.run(candidate);
           const verified = await verifyDocumentImageCounts(document, before, strategy.name);
           if (!shape && verified.inserted) shape = latestInsertedShape(document, before, verified.after);
@@ -1643,9 +1672,7 @@
     description: "选中整篇文档（等同 Ctrl+A）。后续 wps_replace_selection 可以替换全文。",
     parameters: { type: "object", properties: {} },
     handler: async () => {
-      const app = await getApp();
-      const sel = app.Selection;
-      if (!sel) throw new Error("未获取到 Selection。");
+      const { app, selection: sel } = await getBoundAwareSelection();
       sel.WholeStory();
       return { ok: true };
     }
@@ -1677,9 +1704,7 @@
           return { replaced: res.replaced, preserved: res.objectsPreserved, skipped: res.skipped, mode: "preserve-objects" };
         }
       }
-      const app = await getApp();
-      const sel = app.Selection;
-      if (!sel) throw new Error("未获取到 Selection。");
+      const { app, selection: sel } = await getBoundAwareSelection();
       sel.WholeStory();
       const payload = Array.isArray(blocks) ? blocks : text;
       await writer().replaceSelectionText(payload, {});
@@ -1736,9 +1761,7 @@
       }
     },
     handler: async ({ style } = {}) => {
-      const app = await getApp();
-      const sel = app.Selection;
-      if (!sel) throw new Error("未获取到 Selection。");
+      const { app, selection: sel } = await getBoundAwareSelection();
       const styleId = STYLE_IDS[style];
       try {
         if (styleId != null) {
@@ -1770,9 +1793,7 @@
       }
     },
     handler: async (opts = {}) => {
-      const app = await getApp();
-      const sel = app.Selection;
-      if (!sel) throw new Error("未获取到 Selection。");
+      const { app, selection: sel } = await getBoundAwareSelection();
       // 选区防护：折叠选区（纯光标）上设字符格式会悄悄作用于光标处/后续输入，先拦住让用户先选中
       const selRange = typeof sel.Range === "function" ? await sel.Range() : sel.Range;
       if (selRange && selRange.Start === selRange.End) {
@@ -1816,9 +1837,7 @@
     description: "在当前光标位置插入分页符。",
     parameters: { type: "object", properties: {} },
     handler: async () => {
-      const app = await getApp();
-      const sel = app.Selection;
-      if (!sel) throw new Error("未获取到 Selection。");
+      const { app, selection: sel } = await getBoundAwareSelection();
       // wdPageBreak = 7
       sel.InsertBreak(7);
       return { ok: true };
@@ -1844,9 +1863,7 @@
     },
     handler: async ({ rows, cols, data } = {}) => {
       const document = await getActiveDocument();
-      const app = await getApp();
-      const sel = app.Selection;
-      if (!sel) throw new Error("未获取到 Selection。");
+      const { app, selection: sel } = await getBoundAwareSelection();
       const table = document.Tables.Add(sel.Range, rows, cols);
       if (Array.isArray(data)) {
         for (let r = 0; r < Math.min(rows, data.length); r += 1) {
@@ -1879,9 +1896,7 @@
     },
     handler: async ({ url, textToDisplay, screenTip } = {}) => {
       const document = await getActiveDocument();
-      const app = await getApp();
-      const sel = app.Selection;
-      if (!sel) throw new Error("未获取到 Selection。");
+      const { app, selection: sel } = await getBoundAwareSelection();
       document.Hyperlinks.Add(sel.Range, url, undefined, screenTip, textToDisplay || url);
       return { url, textToDisplay: textToDisplay || url };
     }
@@ -1903,9 +1918,7 @@
     handler: async ({ fileName, width, height } = {}) => {
       if (!fileName) throw new Error("缺少图片路径 fileName。");
       const document = await getActiveDocument();
-      const app = await getApp();
-      const sel = app.Selection;
-      if (!sel) throw new Error("未获取到 Selection。");
+      const { app, selection: sel } = await getBoundAwareSelection();
       const candidateFiles = await writerImageCandidates(fileName);
       debugLog("start", {
         sourceFileName: shortPath(fileName),
@@ -1940,9 +1953,7 @@
     },
     handler: async ({ upperHeadingLevel = 1, lowerHeadingLevel = 3, useHyperlinks = true } = {}) => {
       const document = await getActiveDocument();
-      const app = await getApp();
-      const sel = app.Selection;
-      if (!sel) throw new Error("未获取到 Selection。");
+      const { app, selection: sel } = await getBoundAwareSelection();
       // TablesOfContents.Add(Range, UseHeadingStyles, UpperHeadingLevel, LowerHeadingLevel,
       //   UseFields, TableID, RightAlignPageNumbers, IncludePageNumbers, AddedStyles, UseHyperlinks)
       document.TablesOfContents.Add(
@@ -1984,9 +1995,7 @@
     },
     handler: async ({ text } = {}) => {
       const document = await getActiveDocument();
-      const app = await getApp();
-      const sel = app.Selection;
-      if (!sel) throw new Error("未获取到 Selection。");
+      const { app, selection: sel } = await getBoundAwareSelection();
       document.Comments.Add(sel.Range, text);
       return { added: true };
     }
@@ -2022,9 +2031,7 @@
     },
     handler: async ({ name } = {}) => {
       const document = await getActiveDocument();
-      const app = await getApp();
-      const sel = app.Selection;
-      if (!sel) throw new Error("未获取到 Selection。");
+      const { app, selection: sel } = await getBoundAwareSelection();
       document.Bookmarks.Add(name, sel.Range);
       return { added: name };
     }

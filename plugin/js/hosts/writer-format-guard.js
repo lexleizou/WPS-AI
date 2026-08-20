@@ -325,7 +325,7 @@
       if (!writeResult.applied.length) throw new Error(`FORMAT_APPLY_FAILED：${snapshot.anchor} 没有任何格式字段成功写入。`);
       // 必须在本段全部字段写完后再完整回读一次：后写的点值可能让 WPS 重新计算 CharacterUnit，
       // 只做逐字段即时回读仍可能产生“先成功、最后又被覆盖”的假成功。
-      const verifiedSnapshot = paragraphSnapshot(snapshot.range, index);
+      const verifiedSnapshot = paragraphSnapshot(paragraph, index);
       const remaining = diffSnapshot(verifiedSnapshot, audit.requirements);
       Object.keys(remaining).forEach((field) => {
         if (writeResult.failed.some((item) => item.field === field)) return;
