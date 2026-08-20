@@ -3071,26 +3071,27 @@
     document.documentElement.dataset.lingxiPasteIsolationV2 = "1";
     const isChatInput = (el) => el && (el.id === "chatInput" || el.closest?.("#chatInput"));
 
+    let focusInProgress = false;
     function focusNativeTaskPane(target) {
+      if (focusInProgress) return true;
+      focusInProgress = true;
       let focused = false;
       try {
-        const pane = window.WpsAiAddon?.getCurrentTaskPane?.() || null;
-        if (pane) {
-          try { pane.Visible = true; } catch (_) {}
-          for (const name of ["Focus", "SetFocus", "Activate", "BringToFront"]) {
-            try {
-              if (typeof pane[name] === "function") {
-                pane[name]();
-                focused = true;
-                break;
-              }
-            } catch (_) {}
+        if (typeof window.__lingxiFocusNativeTaskPane === "function") {
+          focused = window.__lingxiFocusNativeTaskPane() === true;
+        } else {
+          const pane = window.WpsAiAddon?.getCurrentTaskPane?.() || null;
+          if (pane) {
+            try { pane.Visible = true; } catch (_) {}
+            for (const name of ["Focus", "SetFocus", "Activate", "BringToFront"]) {
+              try { if (typeof pane[name] === "function") { pane[name](); focused = true; break; } } catch (_) {}
+            }
           }
+          try { window.focus(); } catch (_) {}
         }
-      } catch (_) {}
-      try { window.focus(); } catch (_) {}
-      try { target?.focus?.({ preventScroll: true }); } catch (_) { try { target?.focus?.(); } catch (_) {} }
-      return focused;
+        try { target?.focus?.({ preventScroll: true }); } catch (_) { try { target?.focus?.(); } catch (_) {} }
+        return focused;
+      } finally { focusInProgress = false; }
     }
 
     function ensureSafePasteButton() {
@@ -3107,6 +3108,7 @@
       button.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5h6"/><rect x="7" y="3" width="10" height="4" rx="1"/><path d="M9 7H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3"/></svg>';
       let selectionStart = null;
       let selectionEnd = null;
+      let pasteInFlight = false;
       button.addEventListener("pointerdown", (event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -3117,12 +3119,20 @@
       button.addEventListener("click", async (event) => {
         event.preventDefault();
         event.stopPropagation();
+        if (pasteInFlight) return;
+        pasteInFlight = true;
+        button.disabled = true;
         focusNativeTaskPane(input);
         if (selectionStart != null && selectionEnd != null) {
           try { input.selectionStart = selectionStart; input.selectionEnd = selectionEnd; } catch (_) {}
         }
-        const ok = await window.WpsAiClipboard?.pasteInto?.(input);
-        showCopyHint(ok ? "已安全粘贴到灵犀输入框" : "粘贴失败：无法读取系统剪贴板", !ok);
+        try {
+          const ok = await window.WpsAiClipboard?.pasteInto?.(input);
+          showCopyHint(ok ? "已安全粘贴到灵犀输入框" : "粘贴失败：无法读取系统剪贴板", !ok);
+        } finally {
+          pasteInFlight = false;
+          button.disabled = false;
+        }
       });
       const spacer = toolbar.querySelector(".chat-toolbar-spacer");
       toolbar.insertBefore(button, spacer || toolbar.firstChild);

@@ -761,9 +761,7 @@
       }
     },
     handler: async ({ find, replace, matchCase = false } = {}) => {
-      const app = await doc().getApplication();
-      const document = app?.ActiveDocument;
-      if (!document) throw new Error("未检测到活动文档。");
+      const document = await getActiveDocument();
       const range = document.Content;
       const finder = range.Find;
       finder.Text = find;
@@ -798,6 +796,8 @@
   }
 
   async function getActiveDocument() {
+    const bound = global.WpsAiDocumentMutation?.getBoundDocument?.() || null;
+    if (bound) return bound;
     const app = await doc().getApplication();
     const d = app?.ActiveDocument;
     if (!d) throw new Error("未检测到活动文档。");

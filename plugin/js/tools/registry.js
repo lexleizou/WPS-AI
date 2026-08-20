@@ -268,8 +268,8 @@
           label: `external:${name}`,
           toolName: name,
           args,
-          mutate: async () => {
-            docPath = backup.getCurrentDocPath?.() || null;
+          mutate: async (_mutationArgs, transaction) => {
+            docPath = transaction?.docPath || backup.getCurrentDocPath?.() || null;
             if (recordable) {
               try {
                 const pre = await snap.captureBefore(host, name, args);
@@ -278,6 +278,8 @@
                 captureAfterFn = pre?._captureAfter || null;
               } catch (e) { /* 快照只影响历史展示，不影响事务本身 */ }
             }
+            const writeBoundary = mutationCoordinator.validateTransaction?.(transaction) || { ok: true };
+            if (!writeBoundary.ok) throw new Error(writeBoundary.error || writeBoundary.code || "DOCUMENT_CHANGED_DURING_MUTATION");
             return await runner();
           }
         });

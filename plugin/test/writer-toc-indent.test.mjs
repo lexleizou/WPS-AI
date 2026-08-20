@@ -11,9 +11,7 @@ test("format guard preserves character-unit indentation requirements", () => {
   const context = loadIife(guardFile);
   const normalized = context.WpsAiWriterFormatGuard._internal.normalizeRequirements({
     leftIndent: 14.15,
-    firstLineIndent: 0,
-    characterUnitLeftIndent: 0,
-    characterUnitFirstLineIndent: 0
+    firstLineIndent: 0
   });
   assert.equal(normalized.leftIndent, 14.15);
   assert.equal(normalized.firstLineIndent, 0);

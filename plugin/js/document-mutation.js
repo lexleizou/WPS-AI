@@ -4,11 +4,29 @@
 
   // 所有 Writer 修改通过同一队列串行执行，避免两个异步备份/写入互相抢 currentTurn。
   let mutationTail = Promise.resolve();
+  let activeTransaction = null;
   function withMutationLock(fn) {
     const next = mutationTail.then(fn, fn);
     mutationTail = next.catch(() => {});
     return next;
   }
+
+  function getActiveDocumentRef() {
+    try {
+      const app = global.WpsAiAddon?.getApplicationSync?.()
+        || global.Application
+        || global.wps?.Application
+        || (typeof global.wps?.WpsApplication === "function" ? global.wps.WpsApplication() : null);
+      return app?.ActiveDocument || null;
+    } catch (e) { return null; }
+  }
+
+  function documentRefPath(documentRef) {
+    try { return String(documentRef?.FullName || "") || null; } catch (e) { return null; }
+  }
+
+  function getActiveTransaction() { return activeTransaction; }
+  function getBoundDocument() { return activeTransaction?.documentRef || null; }
 
   function pathsEqual(history, a, b) {
     if (!a || !b) return false;
@@ -98,12 +116,18 @@
     if (activeDocId && backupInfo.docId && String(activeDocId) !== String(backupInfo.docId)) {
       return { ok: false, code: "DOCUMENT_CHANGED_DURING_BACKUP", error: "DOCUMENT_CHANGED_DURING_BACKUP: 当前文档身份与备份不一致。" };
     }
+    const documentRef = getActiveDocumentRef();
+    const refPath = documentRefPath(documentRef);
+    if (documentRef && refPath && !pathsEqual(history, refPath, backupInfo.docPath || docPathAfter)) {
+      return { ok: false, code: "DOCUMENT_CHANGED_DURING_BACKUP", error: "DOCUMENT_CHANGED_DURING_BACKUP: 固定文档引用与备份路径不一致。" };
+    }
     return {
       ok: true,
       turnId,
       docId: backupInfo.docId || activeDocId || null,
       docPath: backupInfo.docPath || docPathAfter,
-      backupPath: backupInfo.backupPath
+      backupPath: backupInfo.backupPath,
+      documentRef
     };
   }
 
@@ -113,14 +137,18 @@
     if (!transaction?.turnId || history?.getCurrentTurnId?.() !== transaction.turnId) {
       return { ok: false, code: "TURN_CHANGED_DURING_MUTATION", error: "TURN_CHANGED_DURING_MUTATION: 活动 turn 已变化。" };
     }
-    const currentPath = backup?.getCurrentDocPath?.() || null;
+    const boundPath = documentRefPath(transaction.documentRef);
+    const currentPath = boundPath || backup?.getCurrentDocPath?.() || null;
     if (!pathsEqual(history, currentPath, transaction.docPath)) {
-      return { ok: false, code: "DOCUMENT_CHANGED_DURING_MUTATION", error: "DOCUMENT_CHANGED_DURING_MUTATION: 活动文档已变化。" };
+      return { ok: false, code: "DOCUMENT_CHANGED_DURING_MUTATION", error: "DOCUMENT_CHANGED_DURING_MUTATION: 固定文档身份已变化。" };
     }
-    let currentDocId = null;
-    try { currentDocId = backup?.readDocId?.() || null; } catch (e) {}
-    if (transaction.docId && currentDocId && String(transaction.docId) !== String(currentDocId)) {
-      return { ok: false, code: "DOCUMENT_CHANGED_DURING_MUTATION", error: "DOCUMENT_CHANGED_DURING_MUTATION: 文档身份已变化。" };
+    // 只有没有固定 COM 引用时才读取当前活动文档 ID；有引用时允许用户浏览其它文档。
+    if (!transaction.documentRef) {
+      let currentDocId = null;
+      try { currentDocId = backup?.readDocId?.() || null; } catch (e) {}
+      if (transaction.docId && currentDocId && String(transaction.docId) !== String(currentDocId)) {
+        return { ok: false, code: "DOCUMENT_CHANGED_DURING_MUTATION", error: "DOCUMENT_CHANGED_DURING_MUTATION: 文档身份已变化。" };
+      }
     }
     return { ok: true };
   }
@@ -147,6 +175,13 @@
           deferred: true,
           error: "ROLLBACK_DEFERRED: 目标文档当前不是活动文档，未对其他文档执行 Undo 或磁盘覆盖；备份已保留。"
         };
+      }
+    }
+    if (transaction?.docId) {
+      let rollbackDocId = null;
+      try { rollbackDocId = backup?.readDocId?.() || null; } catch (e) {}
+      if (rollbackDocId && String(rollbackDocId) !== String(transaction.docId)) {
+        return { ok: false, deferred: true, error: "ROLLBACK_DEFERRED: 目标路径相同但文档 ID 不一致，已拒绝恢复。" };
       }
     }
     try { backup?.endUndoGroup?.(); } catch (e) {}
@@ -180,12 +215,16 @@
       const beforeCheck = validateTransaction(prepared);
       if (!beforeCheck.ok) return beforeCheck;
       let value;
+      const previousTransaction = activeTransaction;
+      activeTransaction = prepared;
       try {
         value = await mutate(args || {}, prepared);
       } catch (e) {
         const error = e?.message || String(e);
         const rollback = await rollbackTransaction(prepared, error);
         return { ok: false, code: "MUTATION_THROWN", error, rollback, prepared };
+      } finally {
+        activeTransaction = previousTransaction;
       }
       const afterCheck = validateTransaction(prepared);
       if (!afterCheck.ok) {
@@ -195,7 +234,11 @@
       let assessment = assessResult(value);
       if (assessment.ok && typeof verify === "function") {
         try {
-          const verification = await verify(value, prepared);
+          const previousVerificationTransaction = activeTransaction;
+          activeTransaction = prepared;
+          let verification;
+          try { verification = await verify(value, prepared); }
+          finally { activeTransaction = previousVerificationTransaction; }
           assessment = assessResult({ verification });
         } catch (e) {
           assessment = { ok: false, code: "VERIFICATION_THROWN", issues: [issue("verification", e?.message || e)] };
@@ -220,6 +263,8 @@
     assessResult,
     run,
     validateTransaction,
+    getActiveTransaction,
+    getBoundDocument,
     rollbackTransaction,
     rollbackCurrentTurn
   };

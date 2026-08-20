@@ -9,7 +9,8 @@
   }
   async function documentOf() {
     const app = await applicationOf();
-    const raw = app.ActiveDocument || g.WpsAiDocument?.getActiveDocument?.();
+    const bound = g.WpsAiDocumentMutation?.getBoundDocument?.() || null;
+    const raw = bound || app.ActiveDocument || g.WpsAiDocument?.getActiveDocument?.();
     const document = raw && typeof raw.then === "function" ? await raw : raw;
     if (!document) throw new Error("未获取到当前 WPS 文字文档。");
     return { app, document };

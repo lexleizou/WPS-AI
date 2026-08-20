@@ -29,6 +29,8 @@
   }
 
   async function getDocument() {
+    const bound = global.WpsAiDocumentMutation?.getBoundDocument?.() || null;
+    if (bound) return bound;
     const app = await getApplication();
     const document = app.ActiveDocument || global.WpsAiDocument?.getActiveDocument?.();
     const resolved = document && typeof document.then === "function" ? await document : document;
@@ -106,6 +108,11 @@
       if (value == null || value < 0 || value > 4) throw new Error("alignment 必须为 left/center/right/justify/distribute。");
       normalized.alignment = value;
     }
+    // 明确设置点值缩进即表示以 point 为权威；未显式给 CharacterUnit 时自动补 0，
+    // 避免 WPS 的字符单位属性静默覆盖 LeftIndent/FirstLineIndent。
+    if (source.leftIndent != null && source.characterUnitLeftIndent == null) normalized.characterUnitLeftIndent = 0;
+    if (source.rightIndent != null && source.characterUnitRightIndent == null) normalized.characterUnitRightIndent = 0;
+    if (source.firstLineIndent != null && source.characterUnitFirstLineIndent == null) normalized.characterUnitFirstLineIndent = 0;
     if (!Object.keys(normalized).length) throw new Error("requirements 至少指定一个字体或段落格式字段。");
     return normalized;
   }

@@ -152,6 +152,39 @@ test("rollback uses the immutable transaction even if current turn changes", asy
   assert.equal(restoredArgs[1], "/tmp/a.docx");
 });
 
+test("a bound document reference prevents an async handler from modifying the newly active document", async () => {
+  const documentA = { FullName: "/tmp/a.docx", modified: false };
+  const documentB = { FullName: "/tmp/b.docx", modified: false };
+  const app = { ActiveDocument: documentA };
+  const mutation = loadMutation({
+    WpsAiAddon: { getApplicationSync: () => app },
+    WpsAiHistory: {
+      getCurrentTurnId: () => "t1",
+      isCurrentTurnBlocked: () => false,
+      ensureBackupForTurn: async () => ({ backupPath: "/tmp/a.backup.docx", docPath: "/tmp/a.docx", docId: "doc-1" }),
+      getTurnBackupError: () => null,
+      pathsEqual: (a, b) => a === b
+    },
+    WpsAiBackup: {
+      getCurrentDocPath: () => app.ActiveDocument.FullName,
+      readDocId: () => "doc-1"
+    }
+  });
+  const result = await mutation.run({
+    toolName: "wps_async_write",
+    mutate: async () => {
+      await Promise.resolve();
+      app.ActiveDocument = documentB;
+      const bound = mutation.getBoundDocument();
+      bound.modified = true;
+      return { applied: true };
+    }
+  });
+  assert.equal(result.ok, true);
+  assert.equal(documentA.modified, true);
+  assert.equal(documentB.modified, false);
+});
+
 test("rollback never restores a non-active document when activation fails", async () => {
   let restored = 0;
   const mutation = loadMutation({

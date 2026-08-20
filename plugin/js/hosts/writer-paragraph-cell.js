@@ -5,6 +5,8 @@
   const MARKER = "LINGXI_WRITER_PARAGRAPH_CELL_TOOLS_V1";
 
   async function getDocument() {
+    const bound = global.WpsAiDocumentMutation?.getBoundDocument?.() || null;
+    if (bound) return bound;
     const application = global.WpsAiAddon?.getApplication ? await global.WpsAiAddon.getApplication() : global.Application;
     const document = application?.ActiveDocument || global.WpsAiDocument?.getActiveDocument?.();
     const resolved = document && typeof document.then === "function" ? await document : document;

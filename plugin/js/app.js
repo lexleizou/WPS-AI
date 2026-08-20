@@ -1205,6 +1205,8 @@
       try { if (typeof window.focus === "function") window.focus(); } catch (e) {}
       return ok || paneFocused;
     };
+    // Graphite 安全粘贴等扩展复用同一个原生焦点入口，禁止各自再实现一套 Focus 逻辑。
+    global.__lingxiFocusNativeTaskPane = release;
     const isEditable = (el) => {
       if (global.WpsAiEditShortcuts?.isEditableElement) return global.WpsAiEditShortcuts.isEditableElement(el);
       if (!el || !el.tagName) return false;

@@ -114,6 +114,7 @@
     const deadline = Date.now() + 10000;
     let attempt = 0;
     let lastError = "";
+    let lastCompleteSize = -1;
     while (Date.now() < deadline) {
       attempt += 1;
       const fileResp = await fetch(proxyBase() + "/load-local-file", {
@@ -122,12 +123,20 @@
         body: JSON.stringify({ path: pdfPath })
       });
       const fileData = await fileResp.json().catch(() => ({}));
+      let completeButUnstable = false;
       if (fileResp.ok && fileData.ok && fileData.base64 && Number(fileData.size || 0) > 0) {
-        return base64ToBytes(fileData.base64);
+        const bytes = base64ToBytes(fileData.base64);
+        const size = Number(fileData.size || bytes.length);
+        const complete = looksCompletePdf(bytes);
+        if (complete && size === lastCompleteSize) return bytes;
+        lastCompleteSize = complete ? size : -1;
+        completeButUnstable = true;
+        lastError = complete ? "PDF 文件仍在写入，等待大小稳定" : "PDF 头或 EOF 尚未完整";
+      } else {
+        lastError = fileData.error || `HTTP ${fileResp.status}`;
       }
-      lastError = fileData.error || `HTTP ${fileResp.status}`;
       const emptyFile = fileResp.ok && fileData.ok && (!fileData.base64 || Number(fileData.size || 0) <= 0);
-      const retryable = emptyFile || (!fileResp.ok && (fileResp.status === 404 || fileResp.status === 400)
+      const retryable = completeButUnstable || emptyFile || (!fileResp.ok && (fileResp.status === 404 || fileResp.status === 400)
         && /不存在|找不到|not found|no such file|enoent|空文件|empty/i.test(String(lastError)));
       if (!retryable) throw new Error(`读取导出的 PDF 失败：${lastError}`);
       await sleep(Math.min(1000, 120 + attempt * 120));
@@ -140,6 +149,16 @@
     const bytes = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i += 1) bytes[i] = bin.charCodeAt(i);
     return bytes;
+  }
+
+  function looksCompletePdf(bytes) {
+    if (!bytes || bytes.length < 10) return false;
+    const head = String.fromCharCode(...bytes.slice(0, Math.min(8, bytes.length)));
+    if (!head.startsWith("%PDF-")) return false;
+    const tailStart = Math.max(0, bytes.length - 2048);
+    let tail = "";
+    for (let i = tailStart; i < bytes.length; i += 1) tail += String.fromCharCode(bytes[i]);
+    return /%%EOF\s*$/.test(tail);
   }
 
   // ---------------- pdf.js 懒加载 + 渲染 ----------------
@@ -337,5 +356,5 @@
     }
   }
 
-  global.WpsAiAutoReview = { run, normalizeMode, MODES, _internal: { exportAndLoadPdf, base64ToBytes } };
+  global.WpsAiAutoReview = { run, normalizeMode, MODES, _internal: { exportAndLoadPdf, base64ToBytes, looksCompletePdf } };
 })(window);

@@ -3,6 +3,8 @@
   // LINGXI_WRITER_HEADER_TABLE_WIDTH_V2
   const VERSION = 2, HEADER_INDEX = Object.freeze({ primary: 1, firstPage: 2, evenPages: 3 });
   async function documentOf() {
+    const bound = global.WpsAiDocumentMutation?.getBoundDocument?.() || null;
+    if (bound) return bound;
     const app = global.WpsAiAddon?.getApplication ? await global.WpsAiAddon.getApplication() : global.Application;
     const raw = app?.ActiveDocument || global.WpsAiDocument?.getActiveDocument?.();
     const document = raw && typeof raw.then === "function" ? await raw : raw;

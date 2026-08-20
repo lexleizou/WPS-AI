@@ -4,6 +4,8 @@
   const HEADER_INDEX = Object.freeze({ primary: 1, firstPage: 2, evenPages: 3 });
 
   async function documentOf() {
+    const bound = g.WpsAiDocumentMutation?.getBoundDocument?.() || null;
+    if (bound) return bound;
     const app = g.WpsAiAddon?.getApplication ? await g.WpsAiAddon.getApplication() : g.Application;
     const raw = app?.ActiveDocument || g.WpsAiDocument?.getActiveDocument?.();
     const document = raw && typeof raw.then === "function" ? await raw : raw;

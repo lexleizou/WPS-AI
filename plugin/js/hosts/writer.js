@@ -6,6 +6,8 @@
   }
 
   async function getActiveDocument() {
+    const bound = global.WpsAiDocumentMutation?.getBoundDocument?.() || null;
+    if (bound) return bound;
     const app = await getApp();
     return app?.ActiveDocument || null;
   }
@@ -21,6 +23,15 @@
   async function getSelection() {
     const app = await getApp();
     const doc = await getActiveDocument();
+    const bound = global.WpsAiDocumentMutation?.getBoundDocument?.() || null;
+    if (bound) {
+      let activePath = "", boundPath = "";
+      try { activePath = String(app?.ActiveDocument?.FullName || ""); } catch (e) {}
+      try { boundPath = String(bound.FullName || ""); } catch (e) {}
+      if (activePath && boundPath && activePath !== boundPath) {
+        throw new Error("DOCUMENT_NOT_ACTIVE_FOR_SELECTION: 用户已切换文档，基于 Selection 的修改已取消；请回到原文档后重试。");
+      }
+    }
     return app?.Selection || doc?.Application?.Selection || null;
   }
 
@@ -2085,8 +2096,13 @@
       const actual = writeTabStopsTo(pf, [{ position: contentWidth, alignment: "right", leader: opts.leader || "dots" }], failures, `toc${level}`);
       if (indentStep != null) {
         try {
-          pf.LeftIndent = indentStep * (level - 1);
-          if (Number(pf.LeftIndent) !== indentStep * (level - 1)) failures.push({ field: "leftIndent", expected: indentStep * (level - 1), actual: Number(pf.LeftIndent) });
+          pf.CharacterUnitLeftIndent = 0;
+          const charActual = Number(pf.CharacterUnitLeftIndent);
+          if (!Number.isFinite(charActual) || Math.abs(charActual) > 0.01) failures.push({ field: "characterUnitLeftIndent", expected: 0, actual: charActual });
+          const expectedIndent = indentStep * (level - 1);
+          pf.LeftIndent = expectedIndent;
+          const actualIndent = Number(pf.LeftIndent);
+          if (!Number.isFinite(actualIndent) || Math.abs(actualIndent - expectedIndent) > 0.01) failures.push({ field: "leftIndent", expected: expectedIndent, actual: actualIndent });
         } catch (e) {
           failures.push({ field: "leftIndent", error: String((e && e.message) || e) });
         }
