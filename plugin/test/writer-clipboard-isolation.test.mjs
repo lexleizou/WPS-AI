@@ -14,6 +14,8 @@ test("clipboard isolation focuses the native task pane and never undoes the docu
   assert.ok(start >= 0 && end > start);
   assert.match(body, /getCurrentTaskPane/);
   assert.match(body, /lingxiSafePasteBtn/);
+  assert.match(body, /lingxiSafeCopyBtn/);
+  assert.match(body, /mirrorTextToSystemClipboard/);
   assert.match(body, /WpsAiClipboard\?\.pasteInto/);
   assert.doesNotMatch(body, /\.Undo\s*\(/);
   assert.doesNotMatch(body, /revertDuplicatedDocumentPaste/);

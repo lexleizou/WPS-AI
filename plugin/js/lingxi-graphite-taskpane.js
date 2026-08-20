@@ -3099,6 +3099,47 @@
       const toolbar = document.querySelector(".chat-input-toolbar");
       const input = byId("chatInput");
       if (!toolbar || !input) return;
+      const spacer = toolbar.querySelector(".chat-toolbar-spacer");
+      const copyButton = document.createElement("button");
+      copyButton.id = "lingxiSafeCopyBtn";
+      copyButton.type = "button";
+      copyButton.className = "chat-toolbar-btn";
+      copyButton.title = "安全复制灵犀选中文本（避免 macOS WPS 抢占 ⌘C）";
+      copyButton.setAttribute("aria-label", "安全复制");
+      copyButton.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3"/></svg>';
+      let pendingCopyText = "";
+      let copyInFlight = false;
+      copyButton.addEventListener("pointerdown", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const start = Number.isFinite(input.selectionStart) ? input.selectionStart : 0;
+        const end = Number.isFinite(input.selectionEnd) ? input.selectionEnd : start;
+        pendingCopyText = end > start ? String(input.value || "").slice(start, end) : "";
+        if (!pendingCopyText) {
+          const selection = window.getSelection?.();
+          const node = selection?.rangeCount ? selection.getRangeAt(0).commonAncestorContainer : null;
+          const element = node?.nodeType === 1 ? node : node?.parentElement;
+          if (element && byId("chatStream")?.contains(element)) pendingCopyText = String(selection?.toString() || "");
+        }
+      });
+      copyButton.addEventListener("click", async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (copyInFlight) return;
+        const text = String(pendingCopyText || "");
+        if (!text) { showCopyHint("请先在灵犀输入框或聊天消息中选中文本", true); return; }
+        copyInFlight = true;
+        copyButton.disabled = true;
+        try {
+          const ok = await mirrorTextToSystemClipboard(text);
+          showCopyHint(ok ? `已安全复制 ${text.length} 字符` : "复制失败：本地代理未响应", !ok);
+        } finally {
+          copyInFlight = false;
+          copyButton.disabled = false;
+        }
+      });
+      toolbar.insertBefore(copyButton, spacer || toolbar.firstChild);
+
       const button = document.createElement("button");
       button.id = "lingxiSafePasteBtn";
       button.type = "button";
@@ -3134,7 +3175,6 @@
           button.disabled = false;
         }
       });
-      const spacer = toolbar.querySelector(".chat-toolbar-spacer");
       toolbar.insertBefore(button, spacer || toolbar.firstChild);
     }
 
