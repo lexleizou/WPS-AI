@@ -37,7 +37,7 @@
   });
   // 覆盖基础工具：页脚页码禁止再走会覆盖 Range.Text 且只支持单 PAGE 的旧通路。
   registry.registerTool({
-    name: "wps_set_header_footer", hosts: ["wps"],
+    name: "wps_set_header_footer", origin: "writer-header-footer-objects", replaces: "writer-core", hosts: ["wps"],
     description: "设置普通页眉/页脚文字与对齐。页脚页码禁止使用本工具；PAGE/NUMPAGES 必须改用 wps_set_footer_page_number_pair。",
     parameters: {
       type: "object", properties: {

@@ -195,14 +195,14 @@
     const registry = g.WpsAiToolRegistry;
     if (!registry?.registerTool) return false;
     registry.registerTool({
-      name: "wps_delete_table_row", hosts: ["wps"],
+      name: "wps_delete_table_row", origin: "writer-table-safe", replaces: "writer-core", hosts: ["wps"],
       description: "安全删除指定表格的一行（1-based）。兼容 WPS Rows.Item 不可用及合并单元格表，自动回退到单元格 Range.Rows；写后验证行数或删除修订增长。",
       parameters: { type: "object", required: ["tableIndex", "rowIndex"], properties: {
         tableIndex: { type: "integer", minimum: 1 }, rowIndex: { type: "integer", minimum: 1, description: "1-based；先用 wps_read_table/list_tables 核实" }
       } }, handler: deleteTableRow
     });
     registry.registerTool({
-      name: "wps_write_table_range", hosts: ["wps"],
+      name: "wps_write_table_range", origin: "writer-table-safe", replaces: "writer-core", hosts: ["wps"],
       description: "向指定 Writer 表格写入二维数据（1-based）。默认保留现有单元格换行类型；普通 LF 不再静默变为 Shift+Enter，写后逐格验证。",
       parameters: { type: "object", required: ["tableIndex", "values"], properties: {
         tableIndex: { type: "integer", minimum: 1 }, startRow: { type: "integer", minimum: 1, default: 1 }, startCol: { type: "integer", minimum: 1, default: 1 },

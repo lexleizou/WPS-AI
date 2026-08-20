@@ -271,6 +271,21 @@
 
   function getCurrentTurnId() { return currentTurn?.id || null; }
 
+  function getCurrentTurn() { return currentTurn; }
+
+  function markCurrentTurnFailed(reason) {
+    if (!currentTurn) return false;
+    currentTurn.blocked = true;
+    currentTurn.failedAt = Date.now();
+    currentTurn.failureReason = reason ? String(reason).slice(0, 500) : "修改失败";
+    turns[currentTurn.id] = currentTurn;
+    persistTurns();
+    notify();
+    return true;
+  }
+
+  function isCurrentTurnBlocked() { return !!currentTurn?.blocked; }
+
   function deleteTurn(turnId) {
     delete turns[turnId];
     persistTurnsExact();
@@ -463,7 +478,10 @@
     ensureBackupForTurn,
     listTurns,
     getCurrentTurnId,
+    getCurrentTurn,
     getTurnBackupError,
+    markCurrentTurnFailed,
+    isCurrentTurnBlocked,
     deleteTurn,
     markTurnRestored,
     reloadFromStore,

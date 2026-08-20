@@ -344,6 +344,7 @@
 
   registry.registerTool({
     name: "wps_set_header_footer",
+    origin: "writer-core",
     hosts: ["wps"],
     description: "设置页眉或页脚。target=header/footer。text=文字内容；pageNumber=true 插入页码；alignment 对齐(left/center/right)。",
     parameters: {
@@ -2107,6 +2108,7 @@
 
   registry.registerTool({
     name: "wps_write_table_range",
+    origin: "writer-core",
     hosts: ["wps"],
     description: "向指定表格从 (startRow, startCol) 开始写入二维数据（对齐 et_write_range 语义）。values 长度决定写入范围；行列不够会追加。startRow / startCol 从 1 开始。",
     parameters: {
@@ -2208,6 +2210,7 @@
 
   registry.registerTool({
     name: "wps_delete_table_row",
+    origin: "writer-core",
     hosts: ["wps"],
     description: "删除指定表格的某一行。",
     parameters: {
