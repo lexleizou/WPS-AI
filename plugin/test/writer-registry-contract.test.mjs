@@ -51,6 +51,24 @@ test("execute rejects a tool on the wrong host", async () => {
   assert.equal(calls, 0);
 });
 
+test("host detection falls back to WpsAiDocument for PDF", async () => {
+  let calls = 0;
+  const registry = loadRegistry({
+    WpsAiSnapshot: { detectHost: () => "*" },
+    WpsAiDocument: { getHost: async () => "pdf" }
+  });
+  registry.registerTool({
+    name: "contract_pdf_only",
+    hosts: ["pdf"],
+    sideEffect: "none",
+    parameters: { type: "object", properties: {} },
+    handler: async () => { calls += 1; return "ok"; }
+  });
+  const result = await registry.execute("contract_pdf_only", {});
+  assert.equal(result.ok, true);
+  assert.equal(calls, 1);
+});
+
 test("document mutation fails closed when backup returns no backupPath", async () => {
   let calls = 0;
   let started = 0;

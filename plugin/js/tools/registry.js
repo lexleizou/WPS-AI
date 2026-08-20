@@ -95,7 +95,7 @@
   async function detectCurrentHost() {
     try {
       const host = global.WpsAiSnapshot?.detectHost?.();
-      if (host) return String(host);
+      if (host && host !== "*") return String(host);
     } catch (e) {}
     try {
       const host = await global.WpsAiDocument?.getHost?.();
