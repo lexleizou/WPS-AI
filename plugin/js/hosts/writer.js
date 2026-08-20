@@ -1894,8 +1894,10 @@
     }
     // 写入后立即读回比对：COM 静默失败很常见，失败字段收集进 failures 如实上报，不再空吞
     const failures = [];
+    const finalExpectations = {};
     const applyProp = (field, value) => {
       try {
+        finalExpectations[field] = Number(value);
         pf[field] = value;
         const actual = Number(pf[field]);
         if (!Number.isFinite(actual) || Math.abs(actual - Number(value)) > 0.01) failures.push({ field, expected: value, actual });
@@ -1920,6 +1922,11 @@
     } else if (numOr(opts.lineSpacing) != null) {
       applyProp("LineSpacing", opts.lineSpacing);
     }
+    Object.entries(finalExpectations).forEach(([field, expected]) => {
+      if (failures.some((item) => item.field === field)) return;
+      const actual = Number(pf[field]);
+      if (!Number.isFinite(actual) || Math.abs(actual - expected) > 0.01) failures.push({ field, expected, actual, phase: "finalReadback" });
+    });
     return { scope: opts.scope || "selection", applied: failures.length === 0, failures };
   }
 
@@ -2006,8 +2013,10 @@
     const failures = [];
     const pf = style.ParagraphFormat;
     const para = opts.paragraph || {};
+    const paragraphExpectations = {};
     const applyProp = (obj, field, value) => {
       try {
+        if (obj === pf) paragraphExpectations[field] = Number(value);
         obj[field] = value;
         const actual = Number(obj[field]);
         if (!Number.isFinite(actual) || Math.abs(actual - Number(value)) > 0.01) failures.push({ field, expected: value, actual });
@@ -2025,6 +2034,11 @@
     if (numOr(para.spaceBefore) != null) applyProp(pf, "SpaceBefore", para.spaceBefore);
     if (numOr(para.spaceAfter) != null) applyProp(pf, "SpaceAfter", para.spaceAfter);
     if (numOr(para.lineSpacing) != null) applyProp(pf, "LineSpacing", para.lineSpacing);
+    Object.entries(paragraphExpectations).forEach(([field, expected]) => {
+      if (failures.some((item) => item.field === field)) return;
+      const actual = Number(pf[field]);
+      if (!Number.isFinite(actual) || Math.abs(actual - expected) > 0.01) failures.push({ field, expected, actual, phase: "finalReadback" });
+    });
     const font = opts.font || {};
     if (font.name) {
       try {

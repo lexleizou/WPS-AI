@@ -316,6 +316,20 @@
       if (!Object.keys(diff).length) { skippedAsAlreadyMatching.push(snapshot.anchor); continue; }
       const writeResult = applyDiff(snapshot, audit.requirements, diff);
       if (!writeResult.applied.length) throw new Error(`FORMAT_APPLY_FAILED：${snapshot.anchor} 没有任何格式字段成功写入。`);
+      // 必须在本段全部字段写完后再完整回读一次：后写的点值可能让 WPS 重新计算 CharacterUnit，
+      // 只做逐字段即时回读仍可能产生“先成功、最后又被覆盖”的假成功。
+      const verifiedSnapshot = paragraphSnapshot(snapshot.range, index);
+      const remaining = diffSnapshot(verifiedSnapshot, audit.requirements);
+      Object.keys(remaining).forEach((field) => {
+        if (writeResult.failed.some((item) => item.field === field)) return;
+        const mapping = NUMERIC_FIELDS[field];
+        const actual = field === "fontName"
+          ? verifiedSnapshot.font.name
+          : (field === "lineSpacingRule"
+            ? verifiedSnapshot.paragraph.LineSpacingRule
+            : (mapping?.[0] === "font" ? verifiedSnapshot.font[mapping[1]] : verifiedSnapshot.paragraph[mapping?.[1]]));
+        writeResult.failed.push({ field, expected: audit.requirements[field], actual, phase: "finalReadback" });
+      });
       changed.push({ anchor: snapshot.anchor, appliedFields: writeResult.applied, failedFields: writeResult.failed });
       if (writeResult.failed.length) failedParagraphs.push({ anchor: snapshot.anchor, failedFields: writeResult.failed });
       const signature = JSON.stringify(writeResult.applied);
