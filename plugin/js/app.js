@@ -1149,6 +1149,24 @@
     const activeElement = () => doc.activeElement || document.activeElement;
     const release = () => {
       let ok = false;
+      let paneFocused = false;
+      // macOS WPS 通常没有 CommandBars.ReleaseFocus，但当前 TaskPane 可能暴露 Focus/SetFocus。
+      // 先把原生键盘焦点交给 TaskPane，再聚焦 WebView 内元素，避免 Cmd+C/V 同时落到正文。
+      try {
+        const pane = global.WpsAiAddon?.getCurrentTaskPane?.() || null;
+        if (pane) {
+          try { pane.Visible = true; } catch (e) {}
+          for (const name of ["Focus", "SetFocus", "Activate", "BringToFront"]) {
+            try {
+              if (typeof pane[name] === "function") {
+                pane[name]();
+                paneFocused = true;
+                break;
+              }
+            } catch (e) {}
+          }
+        }
+      } catch (e) {}
       // 跨平台尽力：CommandBars.ReleaseFocus 在 Windows / Linux 桌面版 WPS 上有，但不同平台 app 对象
       // 的取法不一（有时 getApplicationSync 拿到的那个没挂 CommandBars）。逐个候选 app 都试一遍，
       // 任一成功即释放主窗口 OS 键盘焦点 —— 这样 Windows 之外（Linux，以及有该 API 的 mac 版本）也能覆盖。
@@ -1177,14 +1195,15 @@
             hasApp: !!a,
             hasCommandBars: !!(a && a.CommandBars),
             hasReleaseFocus: !!(a && a.CommandBars && typeof a.CommandBars.ReleaseFocus === "function"),
-            released: ok,
+            paneFocused,
+            released: ok || paneFocused,
             ua: (navigator.userAgent || "").slice(0, 80)
           });
         } catch (e) {}
       }
       // 补一手：让 WebView 窗口抢回 OS 键盘焦点（ReleaseFocus 不存在/不生效时的兜底，mac WKWebView 上常无效但无害）
       try { if (typeof window.focus === "function") window.focus(); } catch (e) {}
-      return ok;
+      return ok || paneFocused;
     };
     const isEditable = (el) => {
       if (global.WpsAiEditShortcuts?.isEditableElement) return global.WpsAiEditShortcuts.isEditableElement(el);

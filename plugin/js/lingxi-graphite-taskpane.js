@@ -3067,96 +3067,88 @@
   }
 
   function installMacPasteIsolation() {
-    if (document.documentElement.dataset.lingxiPasteIsolationV1 === "1") return;
-    document.documentElement.dataset.lingxiPasteIsolationV1 = "1";
+    if (document.documentElement.dataset.lingxiPasteIsolationV2 === "1") return;
+    document.documentElement.dataset.lingxiPasteIsolationV2 = "1";
     const isChatInput = (el) => el && (el.id === "chatInput" || el.closest?.("#chatInput"));
 
-    // macOS WPS 无 CommandBars.ReleaseFocus：Cmd+V 在 OS 层同时投递给 WebView 与主文档，
-    // 页面内 stopPropagation 拦不住原生侧。改为快照对比：paste 事件瞬间记录文档状态，
-    // 延迟核对上次光标处是否被原生侧插入了与剪贴板相同的内容，命中则精确删除重复范围。
-    async function readClipboardText() {
+    function focusNativeTaskPane(target) {
+      let focused = false;
       try {
-        const url = window.WpsAiRuntime?.proxyUrl
-          ? window.WpsAiRuntime.proxyUrl("/clipboard/text")
-          : ((window.WpsAiRuntime?.proxyBase?.() || "http://127.0.0.1:3890") + "/clipboard/text");
-        const res = await fetch(url, { cache: "no-store" });
-        const json = await res.json().catch(() => ({}));
-        return json?.ok ? String(json.text || "") : "";
-      } catch (error) { return ""; }
-    }
-
-    function snapshotDocumentState() {
-      try {
-        const application = window.WpsAiAddon?.getApplicationSync?.() || window.wps?.Application || null;
-        const doc = application?.ActiveDocument;
-        if (!doc) return null;
-        const sel = application?.Selection;
-        const selRange = sel ? (typeof sel.Range === "function" ? sel.Range() : sel.Range) : null;
-        const cursorStart = Number(selRange?.Start);
-        const contentEnd = Number(doc.Content?.End);
-        if (!Number.isFinite(cursorStart) || !Number.isFinite(contentEnd)) return null;
-        return { application, doc, cursorStart, contentEnd };
-      } catch (error) { return null; }
-    }
-
-    function rangeText(doc, start, end) {
-      try { return typeof doc.Range === "function" ? String(doc.Range(start, end)?.Text || "") : ""; } catch (error) { return ""; }
-    }
-
-    function revertDuplicatedDocumentPaste(snap, pastedText) {
-      if (!snap || !pastedText) return false;
-      const { doc, cursorStart, contentEnd } = snap;
-      // 剪贴板文本以 \n 分行，而 Word Range.Text 的段落标记是 \r：比对前统一归一化，容忍换行差异。
-      const normalize = (value) => String(value || "").replace(/\r\n?/g, "\n");
-      const expected = normalize(pastedText);
-      const newEnd = Number(doc.Content?.End);
-      if (!Number.isFinite(newEnd)) return false;
-      // 长度仍需吻合；唯一容差来自换行归一化（每个 \n 在文档里可能占 \r\n 两个字符）。
-      const insertedLength = newEnd - contentEnd;
-      const newlineCount = (expected.match(/\n/g) || []).length;
-      if (insertedLength < expected.length || insertedLength > expected.length + newlineCount) return false;
-      const duplicated = normalize(rangeText(doc, cursorStart, cursorStart + insertedLength));
-      if (duplicated !== expected) return false;
-      // 不用 doc.Undo()：撤销栈不可控，可能误回退用户在别处的真实编辑；只精确删除已验证的重复范围。
-      try {
-        const range = typeof doc.Range === "function" ? doc.Range(cursorStart, cursorStart + insertedLength) : null;
-        if (range && normalize(rangeText(doc, cursorStart, cursorStart + insertedLength)) === expected) {
-          if (typeof range.Delete === "function") { range.Delete(); return true; }
-          range.Text = "";
-          return true;
+        const pane = window.WpsAiAddon?.getCurrentTaskPane?.() || null;
+        if (pane) {
+          try { pane.Visible = true; } catch (_) {}
+          for (const name of ["Focus", "SetFocus", "Activate", "BringToFront"]) {
+            try {
+              if (typeof pane[name] === "function") {
+                pane[name]();
+                focused = true;
+                break;
+              }
+            } catch (_) {}
+          }
         }
-      } catch (error) {}
-      return false;
+      } catch (_) {}
+      try { window.focus(); } catch (_) {}
+      try { target?.focus?.({ preventScroll: true }); } catch (_) { try { target?.focus?.(); } catch (_) {} }
+      return focused;
     }
 
-    function scheduleDocumentPasteDedupe(snap) {
-      if (!snap) return;
-      window.setTimeout(async () => {
-        const pastedText = await readClipboardText();
-        if (!pastedText) return; // 图片等非文本剪贴板无法按文本比对，放弃（不动作比误删安全）
-        for (const delay of [0, 450, 1000]) {
-          if (delay) await new Promise((resolve) => window.setTimeout(resolve, delay));
-          try {
-            if (revertDuplicatedDocumentPaste(snap, pastedText)) {
-              showCopyHint("已删除文档侧的重复粘贴");
-              return;
-            }
-          } catch (error) { return; }
+    function ensureSafePasteButton() {
+      if (byId("lingxiSafePasteBtn")) return;
+      const toolbar = document.querySelector(".chat-input-toolbar");
+      const input = byId("chatInput");
+      if (!toolbar || !input) return;
+      const button = document.createElement("button");
+      button.id = "lingxiSafePasteBtn";
+      button.type = "button";
+      button.className = "chat-toolbar-btn";
+      button.title = "安全粘贴到灵犀输入框（不写入 WPS 正文）";
+      button.setAttribute("aria-label", "安全粘贴");
+      button.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5h6"/><rect x="7" y="3" width="10" height="4" rx="1"/><path d="M9 7H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3"/></svg>';
+      let selectionStart = null;
+      let selectionEnd = null;
+      button.addEventListener("pointerdown", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        selectionStart = Number.isFinite(input.selectionStart) ? input.selectionStart : null;
+        selectionEnd = Number.isFinite(input.selectionEnd) ? input.selectionEnd : null;
+        focusNativeTaskPane(input);
+      });
+      button.addEventListener("click", async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        focusNativeTaskPane(input);
+        if (selectionStart != null && selectionEnd != null) {
+          try { input.selectionStart = selectionStart; input.selectionEnd = selectionEnd; } catch (_) {}
         }
-      }, 350);
+        const ok = await window.WpsAiClipboard?.pasteInto?.(input);
+        showCopyHint(ok ? "已安全粘贴到灵犀输入框" : "粘贴失败：无法读取系统剪贴板", !ok);
+      });
+      const spacer = toolbar.querySelector(".chat-toolbar-spacer");
+      toolbar.insertBefore(button, spacer || toolbar.firstChild);
     }
 
-    // Cmd+V 的拦截已移交 app.js（keydown 不再 preventDefault，改在 paste 事件内同步处理）。
-    // 这里只在 chatInput 收到 paste 时快照文档状态并调度去重，检测原生双投递在文档侧造成的重复插入。
-    document.addEventListener("paste", (ev) => {
-      if (!isChatInput(ev.target)) return;
-      scheduleDocumentPasteDedupe(snapshotDocumentState());
+    // 关键修复：每次进入输入框或按编辑快捷键，都先调用原生 TaskPane.Focus。
+    // 旧版“检测后 Undo 正文重复粘贴”已删除；它会误撤销用户自己的最新操作。
+    document.addEventListener("pointerdown", (event) => {
+      const target = event.target?.closest?.("#chatInput");
+      if (target) focusNativeTaskPane(target);
+    }, true);
+    document.addEventListener("focusin", (event) => {
+      const target = event.target?.closest?.("#chatInput");
+      if (target) focusNativeTaskPane(target);
+    }, true);
+    document.addEventListener("keydown", (event) => {
+      if (!(event.metaKey || event.ctrlKey) || event.altKey || !/[acvx]/i.test(String(event.key || ""))) return;
+      const target = document.activeElement;
+      if (!isChatInput(target)) return;
+      focusNativeTaskPane(target);
+      event.stopPropagation();
     }, true);
 
-    // WPS 的原生右键菜单会把“粘贴”执行到 Writer。已有自定义菜单缺少粘贴项，
-    // 因此在其菜单创建后补入本地、安全的粘贴动作。
-    document.addEventListener("contextmenu", (ev) => {
-      const target = ev.target?.closest?.("#chatInput");
+    // 右键菜单始终走本地剪贴板代理，不调用 WPS 原生“粘贴”。
+    document.addEventListener("contextmenu", (event) => {
+      const target = event.target?.closest?.("#chatInput");
       if (!target) return;
       const start = Number.isFinite(target.selectionStart) ? target.selectionStart : null;
       const end = Number.isFinite(target.selectionEnd) ? target.selectionEnd : null;
@@ -3167,12 +3159,12 @@
         const button = document.createElement("button");
         button.type = "button";
         button.setAttribute("role", "menuitem");
-        button.textContent = "粘贴";
-        button.addEventListener("click", async (clickEv) => {
-          clickEv.preventDefault();
-          clickEv.stopPropagation();
+        button.textContent = "安全粘贴";
+        button.addEventListener("click", async (clickEvent) => {
+          clickEvent.preventDefault();
+          clickEvent.stopPropagation();
           try {
-            target.focus();
+            focusNativeTaskPane(target);
             if (start != null && end != null) { target.selectionStart = start; target.selectionEnd = end; }
             await window.WpsAiClipboard?.pasteInto?.(target);
           } finally { menu.remove(); }
@@ -3180,6 +3172,8 @@
         menu.insertBefore(button, menu.firstChild);
       }, 0);
     }, true);
+
+    ensureSafePasteButton();
   }
 
   function initServiceConfigurationSurface() {
